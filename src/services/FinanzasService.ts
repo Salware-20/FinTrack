@@ -1,67 +1,105 @@
-import type { Categoria } from '../models/Categoria';
-import type { Transaccion } from '../models/Transaccion';
-import type { Usuario } from '../models/Usuario';
+import type { Categoria, DatosCategoria } from '../models/Categoria';
+import type { Cuenta, DatosCuenta } from '../models/Cuenta';
+import type { DatosTransaccion, Transaccion } from '../models/Transaccion';
+import type { DatosTransferencia, Transferencia } from '../models/Transferencia';
+import type { DatosUsuario, Usuario } from '../models/Usuario';
 import type {
+  ConfiguracionUsuario,
+  EstadoResultados,
   FiltroTransacciones,
   NuevaCategoria,
+  NuevaCuenta,
   NuevaTransaccion,
+  NuevaTransferencia,
+  NuevoUsuario,
   ResumenFinanciero,
+  ResumenMensual,
+  ResultadoRecuperacion,
+  ResultadoRegistro,
+  SaldoCuenta,
   TipoTransaccion,
 } from '../models/tipos';
+
+/** Contenido de un respaldo local (JSON descargable). */
+export interface RespaldoFinanzas {
+  version: number;
+  exportadoEn: string;
+  usuario: DatosUsuario;
+  cuentas: DatosCuenta[];
+  categorias: DatosCategoria[];
+  transacciones: DatosTransaccion[];
+  transferencias: DatosTransferencia[];
+  configuracion: ConfiguracionUsuario;
+}
 
 /**
  * Contrato único de acceso a los datos financieros.
  *
- * El frontend depende SOLO de esta interfaz, nunca de una implementación
- * concreta. Hoy la implementa `MockFinanzasService` (localStorage) y en el
- * futuro la implementará un `SupabaseFinanzasService`, sin cambios en la UI.
+ * La interfaz no recibe `usuarioId`: el servicio lo toma de la sesión activa.
+ * Eso garantiza que ninguna pantalla pueda consultar datos de otro usuario.
  *
- * Todos los métodos son asíncronos a propósito: imitan el comportamiento de
- * una API real (latencia, errores, promesas) para que el cambio a Supabase
- * sea transparente.
+ * Todos los métodos son asíncronos (aunque la base sea local) para que la UI
+ * maneje estados de carga de forma uniforme.
  *
  * Los errores de negocio se lanzan como `ErrorValidacion`.
  */
 export interface FinanzasService {
-  /** Perfil del usuario actual (por ahora, el usuario de demostración). */
-  obtenerUsuario(): Promise<Usuario>;
+  // --- Sesión y cuenta ------------------------------------------------------
+  /** Registra un usuario nuevo y devuelve el código de recuperación (una vez). */
+  registrar(datos: NuevoUsuario): Promise<ResultadoRegistro>;
+  iniciarSesion(correo: string, contrasena: string): Promise<Usuario>;
+  cerrarSesion(): Promise<void>;
+  /** Usuario de la sesión activa, o `null` si no hay sesión. */
+  usuarioActual(): Promise<Usuario | null>;
+  cambiarContrasena(actual: string, nueva: string): Promise<void>;
+  /** Cambia la contraseña con el código de recuperación. Rota el código. */
+  recuperarContrasena(
+    correo: string,
+    codigo: string,
+    nueva: string,
+  ): Promise<ResultadoRecuperacion>;
+  /** Elimina la cuenta y todos sus datos. Requiere la contraseña. */
+  eliminarCuenta(contrasena: string): Promise<void>;
+  obtenerConfiguracion(): Promise<ConfiguracionUsuario>;
 
-  /** Categorías disponibles, opcionalmente filtradas por tipo. */
+  // --- Cuentas --------------------------------------------------------------
+  listarCuentas(): Promise<Cuenta[]>;
+  crearCuenta(datos: NuevaCuenta): Promise<Cuenta>;
+  actualizarCuenta(
+    id: string,
+    cambios: Partial<NuevaCuenta> & { activa?: boolean },
+  ): Promise<Cuenta>;
+  /** Mueve dinero entre dos cuentas del usuario. */
+  transferir(datos: NuevaTransferencia): Promise<Transferencia>;
+  /** Saldo calculado de cada cuenta (solo movimientos confirmados). */
+  obtenerSaldos(): Promise<SaldoCuenta[]>;
+
+  // --- Categorías -----------------------------------------------------------
   listarCategorias(tipo?: TipoTransaccion): Promise<Categoria[]>;
-
-  /** Crea una categoría. El nombre debe ser único dentro de su tipo. */
+  /** Crea una categoría; el nombre es único entre hermanas del mismo tipo. */
   crearCategoria(datos: NuevaCategoria): Promise<Categoria>;
 
-  /**
-   * Transacciones que cumplen el filtro, ya ordenadas.
-   * Sin filtro devuelve todas, de la fecha más reciente a la más antigua.
-   */
+  // --- Transacciones --------------------------------------------------------
   listarTransacciones(filtro?: FiltroTransacciones): Promise<Transaccion[]>;
-
-  /** Devuelve la transacción indicada o `null` si no existe. */
   obtenerTransaccion(id: string): Promise<Transaccion | null>;
-
-  /**
-   * Registra una transacción.
-   * La categoría debe existir y su tipo debe coincidir con el de la transacción.
-   */
   crearTransaccion(datos: NuevaTransaccion): Promise<Transaccion>;
-
-  /** Actualiza parcialmente una transacción existente. */
   actualizarTransaccion(
     id: string,
     cambios: Partial<NuevaTransaccion>,
   ): Promise<Transaccion>;
-
-  /** Elimina una transacción. Lanza error si el id no existe. */
   eliminarTransaccion(id: string): Promise<void>;
 
-  /**
-   * Totales, balance, desglose por categoría y evolución mensual.
-   * Acepta los mismos filtros que `listarTransacciones`.
-   */
+  // --- Reportes -------------------------------------------------------------
   obtenerResumen(filtro?: FiltroTransacciones): Promise<ResumenFinanciero>;
+  obtenerEstadoResultados(desde: string, hasta: string): Promise<EstadoResultados>;
+  obtenerFlujoCaja(desde: string, hasta: string): Promise<ResumenMensual[]>;
 
-  /** Restaura los datos de demostración y descarta los cambios locales. */
+  // --- Datos ----------------------------------------------------------------
+  exportarRespaldo(): Promise<RespaldoFinanzas>;
+  /** Reemplaza los datos del usuario actual con el contenido del respaldo. */
+  importarRespaldo(respaldo: RespaldoFinanzas): Promise<void>;
+  /** Transacciones del usuario en formato CSV (separador coma). */
+  exportarTransaccionesCsv(filtro?: FiltroTransacciones): Promise<string>;
+  /** Borra los movimientos del usuario y restaura categorías y cuenta base. */
   resetearDatos(): Promise<void>;
 }

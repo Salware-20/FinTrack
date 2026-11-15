@@ -1,6 +1,6 @@
-import { CONFIG_MOCK } from '../config/mock';
+import { CONFIG_APP } from '../config/app';
 import { MetodoPago } from '../models/tipos';
-import type { TipoTransaccion } from '../models/tipos';
+import type { EstadoTransaccion, TipoCuenta, TipoTransaccion } from '../models/tipos';
 
 const ETIQUETAS_METODO_PAGO: Record<MetodoPago, string> = {
   [MetodoPago.Efectivo]: 'Efectivo',
@@ -10,13 +10,25 @@ const ETIQUETAS_METODO_PAGO: Record<MetodoPago, string> = {
   [MetodoPago.Otro]: 'Otro',
 };
 
+const ETIQUETAS_TIPO_CUENTA: Record<TipoCuenta, string> = {
+  efectivo: 'Efectivo',
+  banco: 'Cuenta bancaria',
+  ahorro: 'Ahorro',
+  tarjeta: 'Tarjeta',
+};
+
+const ETIQUETAS_ESTADO: Record<EstadoTransaccion, string> = {
+  confirmado: 'Confirmado',
+  pendiente: 'Pendiente',
+};
+
 const formateadoresMoneda = new Map<string, Intl.NumberFormat>();
 
 function obtenerFormateadorMoneda(moneda: string): Intl.NumberFormat {
   const existente = formateadoresMoneda.get(moneda);
   if (existente) return existente;
 
-  const formateador = new Intl.NumberFormat(CONFIG_MOCK.locale, {
+  const formateador = new Intl.NumberFormat(CONFIG_APP.locale, {
     style: 'currency',
     currency: moneda,
     minimumFractionDigits: 2,
@@ -29,7 +41,7 @@ function obtenerFormateadorMoneda(moneda: string): Intl.NumberFormat {
 /** Formatea un monto como moneda: 12500 -> "₡12 500,00". */
 export function formatearMoneda(
   monto: number,
-  moneda: string = CONFIG_MOCK.moneda,
+  moneda: string = CONFIG_APP.moneda,
 ): string {
   return obtenerFormateadorMoneda(moneda).format(monto);
 }
@@ -55,7 +67,7 @@ export function formatearFecha(fecha: string): string {
   const objeto = analizarFechaISO(fecha);
   if (!objeto) return fecha;
 
-  return new Intl.DateTimeFormat(CONFIG_MOCK.locale, {
+  return new Intl.DateTimeFormat(CONFIG_APP.locale, {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -67,7 +79,7 @@ export function formatearMes(mes: string): string {
   const objeto = analizarFechaISO(`${mes}-01`);
   if (!objeto) return mes;
 
-  return new Intl.DateTimeFormat(CONFIG_MOCK.locale, {
+  return new Intl.DateTimeFormat(CONFIG_APP.locale, {
     month: 'long',
     year: 'numeric',
   }).format(objeto);
@@ -75,7 +87,7 @@ export function formatearMes(mes: string): string {
 
 /** Formatea un porcentaje ya calculado: 32.5 -> "32,5 %". */
 export function formatearPorcentaje(valor: number): string {
-  return `${valor.toLocaleString(CONFIG_MOCK.locale, {
+  return `${valor.toLocaleString(CONFIG_APP.locale, {
     maximumFractionDigits: 1,
   })} %`;
 }
@@ -88,4 +100,29 @@ export function formatearMetodoPago(metodo: MetodoPago): string {
 /** Nombre legible de un tipo de transacción. */
 export function formatearTipo(tipo: TipoTransaccion): string {
   return tipo === 'ingreso' ? 'Ingreso' : 'Gasto';
+}
+
+/** Nombre legible de un tipo de cuenta. */
+export function formatearTipoCuenta(tipo: TipoCuenta): string {
+  return ETIQUETAS_TIPO_CUENTA[tipo] ?? tipo;
+}
+
+/** Nombre legible de un estado de transacción. */
+export function formatearEstado(estado: EstadoTransaccion): string {
+  return ETIQUETAS_ESTADO[estado] ?? estado;
+}
+
+/** Fecha de hoy en formato AAAA-MM-DD. */
+export function fechaHoy(): string {
+  return aFechaISO(new Date());
+}
+
+/** Primer día del mes actual en formato AAAA-MM-DD. */
+export function inicioDeMes(fecha: Date = new Date()): string {
+  return aFechaISO(new Date(fecha.getFullYear(), fecha.getMonth(), 1));
+}
+
+/** Último día del mes actual en formato AAAA-MM-DD. */
+export function finDeMes(fecha: Date = new Date()): string {
+  return aFechaISO(new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0));
 }

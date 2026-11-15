@@ -1,13 +1,22 @@
 import { redondearMonto } from '../utils/numeros';
 import { ErrorValidacion } from './errores';
-import { esMetodoPago, esTipoTransaccion, MetodoPago } from './tipos';
-import type { NuevaTransaccion, TipoTransaccion } from './tipos';
+import {
+  esEstadoTransaccion,
+  esMetodoPago,
+  esTipoTransaccion,
+  EstadoTransaccion,
+  MetodoPago,
+} from './tipos';
+import type { EstadoTransaccion as EstadoTransaccionType, TipoTransaccion } from './tipos';
 
 const PATRON_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Representación serializable de una transacción. */
 export interface DatosTransaccion {
   id: string;
+  usuarioId: string;
+  /** Cuenta de donde sale (gasto) o entra (ingreso) el dinero. */
+  cuentaId: string;
   /** Monto siempre positivo; el signo lo aporta `tipo`. */
   monto: number;
   tipo: TipoTransaccion;
@@ -16,6 +25,8 @@ export interface DatosTransaccion {
   descripcion: string;
   categoriaId: string;
   metodoPago: MetodoPago;
+  estado: EstadoTransaccionType;
+  etiquetas: string[];
   /** Fecha y hora de registro en formato ISO 8601. */
   creadoEn: string;
 }
@@ -23,26 +34,36 @@ export interface DatosTransaccion {
 /**
  * Movimiento de dinero: un ingreso o un gasto.
  *
+ * Las transferencias NO son transacciones: se modelan aparte para que no
+ * contaminen los reportes de ingresos y gastos.
+ *
  * Reglas de negocio:
  * - el monto debe ser mayor que cero (el signo lo define el tipo);
  * - la fecha debe ser una fecha real en formato AAAA-MM-DD;
  * - la descripción es obligatoria;
- * - siempre debe apuntar a una categoría (el servicio valida que exista y
- *   que su tipo coincida con el de la transacción).
+ * - siempre debe apuntar a una cuenta y a una categoría del mismo usuario
+ *   (el servicio valida la existencia, la pertenencia y el tipo).
  */
 export class Transaccion {
   readonly id: string;
+  readonly usuarioId: string;
+  cuentaId: string;
   monto: number;
   tipo: TipoTransaccion;
   fecha: string;
   descripcion: string;
   categoriaId: string;
   metodoPago: MetodoPago;
+  estado: EstadoTransaccionType;
+  etiquetas: string[];
   readonly creadoEn: string;
 
   constructor(datos: DatosTransaccion) {
     if (!datos.id) {
       throw new ErrorValidacion('La transacción requiere un identificador.', 'id');
+    }
+    if (!datos.usuarioId) {
+      throw new ErrorValidacion('La transacción requiere un usuario.', 'usuarioId');
     }
     if (!esTipoTransaccion(datos.tipo)) {
       throw new ErrorValidacion(
@@ -60,17 +81,27 @@ export class Transaccion {
     if (!datos.categoriaId) {
       throw new ErrorValidacion('La transacción debe tener una categoría.', 'categoriaId');
     }
+    if (!datos.cuentaId) {
+      throw new ErrorValidacion('La transacción debe tener una cuenta.', 'cuentaId');
+    }
     if (!esMetodoPago(datos.metodoPago)) {
       throw new ErrorValidacion('El método de pago no es válido.', 'metodoPago');
     }
+    if (!esEstadoTransaccion(datos.estado)) {
+      throw new ErrorValidacion('El estado de la transacción no es válido.', 'estado');
+    }
 
     this.id = datos.id;
+    this.usuarioId = datos.usuarioId;
+    this.cuentaId = datos.cuentaId;
     this.monto = redondearMonto(datos.monto);
     this.tipo = datos.tipo;
     this.fecha = datos.fecha;
     this.descripcion = datos.descripcion.trim();
     this.categoriaId = datos.categoriaId;
     this.metodoPago = datos.metodoPago;
+    this.estado = datos.estado;
+    this.etiquetas = normalizarEtiquetas(datos.etiquetas);
     this.creadoEn = datos.creadoEn;
   }
 
@@ -90,41 +121,65 @@ export class Transaccion {
   }
 
   /** Aplica cambios parciales validando el resultado antes de aceptarlo. */
-  actualizar(cambios: Partial<NuevaTransaccion>): void {
+  actualizar(cambios: Partial<DatosTransaccion>): void {
     const fusion = { ...this.toJSON(), ...Transaccion.soloDefinidos(cambios) };
     const actualizada = new Transaccion(fusion);
 
+    this.cuentaId = actualizada.cuentaId;
     this.monto = actualizada.monto;
     this.tipo = actualizada.tipo;
     this.fecha = actualizada.fecha;
     this.descripcion = actualizada.descripcion;
     this.categoriaId = actualizada.categoriaId;
     this.metodoPago = actualizada.metodoPago;
+    this.estado = actualizada.estado;
+    this.etiquetas = actualizada.etiquetas;
   }
 
   toJSON(): DatosTransaccion {
     return {
       id: this.id,
+      usuarioId: this.usuarioId,
+      cuentaId: this.cuentaId,
       monto: this.monto,
       tipo: this.tipo,
       fecha: this.fecha,
       descripcion: this.descripcion,
       categoriaId: this.categoriaId,
       metodoPago: this.metodoPago,
+      estado: this.estado,
+      etiquetas: [...this.etiquetas],
       creadoEn: this.creadoEn,
     };
   }
 
   /** Crea una transacción nueva generando id y fecha de registro. */
-  static crear(datos: NuevaTransaccion): Transaccion {
+  static crear(
+    datos: {
+      monto: number;
+      tipo: TipoTransaccion;
+      fecha: string;
+      descripcion: string;
+      categoriaId: string;
+      cuentaId: string;
+      metodoPago?: MetodoPago;
+      estado?: EstadoTransaccionType;
+      etiquetas?: string[];
+    },
+    usuarioId: string,
+  ): Transaccion {
     return new Transaccion({
       id: `trx-${crypto.randomUUID()}`,
+      usuarioId,
+      cuentaId: datos.cuentaId,
       monto: datos.monto,
       tipo: datos.tipo,
       fecha: datos.fecha,
       descripcion: datos.descripcion,
       categoriaId: datos.categoriaId,
       metodoPago: datos.metodoPago ?? MetodoPago.Otro,
+      estado: datos.estado ?? EstadoTransaccion.Confirmado,
+      etiquetas: datos.etiquetas ?? [],
       creadoEn: new Date().toISOString(),
     });
   }
@@ -133,13 +188,7 @@ export class Transaccion {
     return new Transaccion(datos);
   }
 
-  private static validarMonto(monto: number): void {
-    if (typeof monto !== 'number' || !Number.isFinite(monto) || monto <= 0) {
-      throw new ErrorValidacion('El monto debe ser un número mayor que cero.', 'monto');
-    }
-  }
-
-  private static validarFecha(fecha: string): void {
+  static validarFecha(fecha: string): void {
     if (typeof fecha !== 'string' || !PATRON_FECHA.test(fecha)) {
       throw new ErrorValidacion('La fecha debe tener formato AAAA-MM-DD.', 'fecha');
     }
@@ -156,17 +205,37 @@ export class Transaccion {
     }
   }
 
+  private static validarMonto(monto: number): void {
+    if (typeof monto !== 'number' || !Number.isFinite(monto) || monto <= 0) {
+      throw new ErrorValidacion('El monto debe ser un número mayor que cero.', 'monto');
+    }
+  }
+
   /** Descarta las claves `undefined` para no sobrescribir datos existentes. */
   private static soloDefinidos(
-    cambios: Partial<NuevaTransaccion>,
+    cambios: Partial<DatosTransaccion>,
   ): Partial<DatosTransaccion> {
     const limpio: Partial<DatosTransaccion> = {};
+    if (cambios.cuentaId !== undefined) limpio.cuentaId = cambios.cuentaId;
     if (cambios.monto !== undefined) limpio.monto = cambios.monto;
     if (cambios.tipo !== undefined) limpio.tipo = cambios.tipo;
     if (cambios.fecha !== undefined) limpio.fecha = cambios.fecha;
     if (cambios.descripcion !== undefined) limpio.descripcion = cambios.descripcion;
     if (cambios.categoriaId !== undefined) limpio.categoriaId = cambios.categoriaId;
     if (cambios.metodoPago !== undefined) limpio.metodoPago = cambios.metodoPago;
+    if (cambios.estado !== undefined) limpio.estado = cambios.estado;
+    if (cambios.etiquetas !== undefined) limpio.etiquetas = cambios.etiquetas;
     return limpio;
   }
+}
+
+function normalizarEtiquetas(etiquetas: string[] | undefined): string[] {
+  if (!etiquetas) return [];
+  return [
+    ...new Set(
+      etiquetas
+        .map((etiqueta) => etiqueta.trim())
+        .filter((etiqueta) => etiqueta.length > 0),
+    ),
+  ];
 }

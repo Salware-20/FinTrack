@@ -7,6 +7,8 @@
  * (útiles para llenar selects y validar formularios).
  */
 
+import type { Usuario } from './Usuario';
+
 export const TipoTransaccion = {
   Ingreso: 'ingreso',
   Gasto: 'gasto',
@@ -18,6 +20,22 @@ export type TipoTransaccion = (typeof TipoTransaccion)[keyof typeof TipoTransacc
 export const TIPOS_TRANSACCION: readonly TipoTransaccion[] = [
   TipoTransaccion.Ingreso,
   TipoTransaccion.Gasto,
+];
+
+export const TipoCuenta = {
+  Efectivo: 'efectivo',
+  Banco: 'banco',
+  Ahorro: 'ahorro',
+  Tarjeta: 'tarjeta',
+} as const;
+
+export type TipoCuenta = (typeof TipoCuenta)[keyof typeof TipoCuenta];
+
+export const TIPOS_CUENTA: readonly TipoCuenta[] = [
+  TipoCuenta.Efectivo,
+  TipoCuenta.Banco,
+  TipoCuenta.Ahorro,
+  TipoCuenta.Tarjeta,
 ];
 
 export const MetodoPago = {
@@ -39,6 +57,18 @@ export const METODOS_PAGO: readonly MetodoPago[] = [
   MetodoPago.Otro,
 ];
 
+export const EstadoTransaccion = {
+  Confirmado: 'confirmado',
+  Pendiente: 'pendiente',
+} as const;
+
+export type EstadoTransaccion = (typeof EstadoTransaccion)[keyof typeof EstadoTransaccion];
+
+export const ESTADOS_TRANSACCION: readonly EstadoTransaccion[] = [
+  EstadoTransaccion.Confirmado,
+  EstadoTransaccion.Pendiente,
+];
+
 export const OrdenTransacciones = {
   FechaDesc: 'fecha-desc',
   FechaAsc: 'fecha-asc',
@@ -53,9 +83,67 @@ export function esTipoTransaccion(valor: unknown): valor is TipoTransaccion {
   return valor === TipoTransaccion.Ingreso || valor === TipoTransaccion.Gasto;
 }
 
+/** Verifica en tiempo de ejecución si un valor es un tipo de cuenta. */
+export function esTipoCuenta(valor: unknown): valor is TipoCuenta {
+  return TIPOS_CUENTA.includes(valor as TipoCuenta);
+}
+
 /** Verifica en tiempo de ejecución si un valor es un método de pago válido. */
 export function esMetodoPago(valor: unknown): valor is MetodoPago {
   return METODOS_PAGO.includes(valor as MetodoPago);
+}
+
+/** Verifica en tiempo de ejecución si un valor es un estado de transacción. */
+export function esEstadoTransaccion(valor: unknown): valor is EstadoTransaccion {
+  return ESTADOS_TRANSACCION.includes(valor as EstadoTransaccion);
+}
+
+/** Datos para crear una cuenta. */
+export interface NuevaCuenta {
+  nombre: string;
+  tipo: TipoCuenta;
+  /** Saldo con el que arranca la cuenta (puede ser 0). */
+  saldoInicial: number;
+  /** Banco o entidad, opcional. */
+  institucion?: string;
+  color?: string;
+  icono?: string;
+}
+
+/** Datos para transferir dinero entre dos cuentas del mismo usuario. */
+export interface NuevaTransferencia {
+  cuentaOrigenId: string;
+  cuentaDestinoId: string;
+  monto: number;
+  fecha: string;
+  descripcion?: string;
+}
+
+/** Datos para registrar un usuario nuevo. */
+export interface NuevoUsuario {
+  nombre: string;
+  correo: string;
+  contrasena: string;
+}
+
+/** Resultado del registro: incluye el código de recuperación en claro (una sola vez). */
+export interface ResultadoRegistro {
+  usuario: Usuario;
+  codigoRecuperacion: string;
+}
+
+/** Resultado de recuperar la contraseña: el código anterior se reemplaza. */
+export interface ResultadoRecuperacion {
+  usuario: Usuario;
+  codigoRecuperacion: string;
+}
+
+/** Preferencias del usuario. */
+export interface ConfiguracionUsuario {
+  usuarioId: string;
+  moneda: string;
+  locale: string;
+  tema: 'claro' | 'oscuro';
 }
 
 /** Filtros aceptados por las consultas del servicio de finanzas. */
@@ -66,8 +154,10 @@ export interface FiltroTransacciones {
   hasta?: string;
   tipo?: TipoTransaccion;
   categoriaId?: string;
+  cuentaId?: string;
   metodoPago?: MetodoPago;
-  /** Búsqueda libre sobre la descripción y el nombre de la categoría. */
+  estado?: EstadoTransaccion;
+  /** Búsqueda libre sobre la descripción, la categoría y las etiquetas. */
   texto?: string;
   /** Orden de los resultados. Por defecto: fecha más reciente primero. */
   orden?: OrdenTransacciones;
@@ -82,18 +172,36 @@ export interface NuevaTransaccion {
   fecha: string;
   descripcion: string;
   categoriaId: string;
+  /** Cuenta de donde sale o entra el dinero. */
+  cuentaId: string;
   /** Si se omite, se usa "otro". */
   metodoPago?: MetodoPago;
+  /** Si se omite, se usa "confirmado". */
+  estado?: EstadoTransaccion;
+  etiquetas?: string[];
 }
 
 /** Datos necesarios para crear una categoría. */
 export interface NuevaCategoria {
   nombre: string;
   tipo: TipoTransaccion;
+  /** Categoría padre para subcategorías; null o vacío para raíz. */
+  padreId?: string | null;
   /** Color hexadecimal; si se omite se usa el color por defecto. */
   color?: string;
   /** Emoji o texto corto; si se omite se usa un ícono genérico. */
   icono?: string;
+}
+
+/** Saldo calculado de una cuenta. */
+export interface SaldoCuenta {
+  cuentaId: string;
+  nombre: string;
+  tipo: TipoCuenta;
+  color: string;
+  icono: string;
+  activa: boolean;
+  saldo: number;
 }
 
 /** Acumulado de una categoría dentro de un resumen financiero. */
@@ -139,4 +247,22 @@ export interface ResumenFinanciero {
     desde: string | null;
     hasta: string | null;
   };
+}
+
+/** Fila del estado de resultados. */
+export interface FilaEstadoResultados {
+  categoriaId: string;
+  nombre: string;
+  tipo: TipoTransaccion;
+  total: number;
+}
+
+/** Estado de resultados de un periodo. */
+export interface EstadoResultados {
+  desde: string;
+  hasta: string;
+  totalIngresos: number;
+  totalGastos: number;
+  utilidad: number;
+  filas: FilaEstadoResultados[];
 }

@@ -1,16 +1,15 @@
-import { MockFinanzasService } from './MockFinanzasService';
+import { LocalFinanzasService } from './LocalFinanzasService';
 import type { FinanzasService } from './FinanzasService';
 
 /**
- * Punto único de acceso a los datos para el frontend.
+ * Punto único de acceso a los datos para la interfaz.
  *
  *   import { finanzasService } from '../services';
  *
- * Es un singleton: toda la aplicación comparte el mismo estado en memoria y
- * la misma persistencia en `localStorage`. Cuando se integre Supabase, solo
- * cambia la implementación asignada aquí; los componentes no se tocan.
+ * Es un singleton sobre IndexedDB: toda la aplicación comparte la misma base
+ * local. La interfaz nunca debe importar `LocalFinanzasService` directamente.
  */
-export const finanzasService: FinanzasService = new MockFinanzasService();
+export const finanzasService: FinanzasService = new LocalFinanzasService();
 
-export { MockFinanzasService };
-export type { FinanzasService } from './FinanzasService';
+export { LocalFinanzasService };
+export type { FinanzasService, RespaldoFinanzas } from './FinanzasService';
