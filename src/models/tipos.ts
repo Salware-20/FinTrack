@@ -229,6 +229,23 @@ export interface CambiosRecurrencia {
   fechaFin?: string | null;
 }
 
+/** Cambios admitidos en un presupuesto. */
+export interface CambiosPresupuesto {
+  montoLimite?: number;
+  periodo?: string | null;
+  alertaPorcentaje?: number;
+  activo?: boolean;
+}
+
+/** Datos necesarios para crear un presupuesto nuevo. */
+export interface NuevoPresupuesto {
+  categoriaId: string;
+  montoLimite: number;
+  periodo?: string | null;
+  alertaPorcentaje?: number;
+  activo?: boolean;
+}
+
 /** Resultado de crear una regla y generar sus ocurrencias vencidas. */
 export interface ResultadoCreacionRecurrencia {
   recurrencia: Recurrencia;
