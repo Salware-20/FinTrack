@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  Alert,
   Badge,
   Button,
   Card,
@@ -22,8 +21,10 @@ import {
   formatearMetodoPago,
   formatearMoneda,
 } from '../../utils/formato';
-import { AlertaError, Cargando } from '../componentes/Estado';
-import { mensajeDeError } from '../componentes/mensajes';
+import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
+import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { useErroresFormulario } from '../componentes/useErroresFormulario';
+import { mensajeDeError } from '../../utils/errores';
 
 interface DatosMovimientos {
   transacciones: Transaccion[];
@@ -67,13 +68,24 @@ const FORMULARIO_INICIAL: FormularioMovimiento = {
   etiquetas: '',
 };
 
+const CAMPOS_MOVIMIENTO = [
+  'monto',
+  'fecha',
+  'descripcion',
+  'categoriaId',
+  'cuentaId',
+] as const;
+
 export function Movimientos() {
+  const notificaciones = useNotificaciones();
+  const { errores, limpiar, limpiarTodo, marcar, manejar } =
+    useErroresFormulario();
+
   const [transacciones, setTransacciones] = useState<Transaccion[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroCuenta, setFiltroCuenta] = useState('');
@@ -107,10 +119,11 @@ export function Movimientos() {
             '',
         }));
         setCargando(false);
+        setErrorCarga(null);
       })
       .catch((fallo: unknown) => {
         if (!activo) return;
-        setError(mensajeDeError(fallo));
+        setErrorCarga(mensajeDeError(fallo));
         setCargando(false);
       });
 
@@ -121,12 +134,19 @@ export function Movimientos() {
 
   const recargar = () => setVersion((actual) => actual + 1);
 
+  const reintentarCarga = () => {
+    setErrorCarga(null);
+    setCargando(true);
+    recargar();
+  };
+
   const categoriasDelTipo = categorias.filter(
     (categoria) => categoria.tipo === formulario.tipo,
   );
 
   const cambiarTipo = (tipo: TipoTransaccion) => {
     const primera = categorias.find((categoria) => categoria.tipo === tipo);
+    limpiar('categoriaId');
     setFormulario((previo) => ({
       ...previo,
       tipo,
@@ -136,11 +156,14 @@ export function Movimientos() {
 
   const guardar = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    setError(null);
-    setAviso(null);
+    limpiarTodo();
 
-    if (!formulario.cuentaId || !formulario.categoriaId) {
-      setError('Seleccione una cuenta y una categoría.');
+    if (!formulario.cuentaId) {
+      marcar('cuentaId', 'Seleccione una cuenta.');
+      return;
+    }
+    if (!formulario.categoriaId) {
+      marcar('categoriaId', 'Seleccione una categoría.');
       return;
     }
 
@@ -167,10 +190,11 @@ export function Movimientos() {
         etiquetas: '',
       }));
       setMostrarFormulario(false);
-      setAviso('Movimiento registrado.');
+      limpiarTodo();
+      notificaciones.exito('Movimiento registrado.');
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      manejar(fallo, CAMPOS_MOVIMIENTO);
     } finally {
       setGuardando(false);
     }
@@ -181,13 +205,12 @@ export function Movimientos() {
       return;
     }
 
-    setError(null);
     try {
       await finanzasService.eliminarTransaccion(id);
-      setAviso('Movimiento eliminado.');
+      notificaciones.exito('Movimiento eliminado.');
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
     }
   };
 
@@ -199,7 +222,9 @@ export function Movimientos() {
     const cuenta = cuentas[0];
 
     if (gastos.length === 0 || ingresos.length === 0 || !cuenta) {
-      setError('No hay categorías o cuentas disponibles para crear ejemplos.');
+      notificaciones.aviso(
+        'No hay categorías o cuentas disponibles para crear ejemplos.',
+      );
       return;
     }
 
@@ -228,7 +253,6 @@ export function Movimientos() {
     ];
 
     setGuardando(true);
-    setError(null);
     try {
       for (const ejemplo of ejemplos) {
         await finanzasService.crearTransaccion({
@@ -241,10 +265,10 @@ export function Movimientos() {
           metodoPago: ejemplo.metodo,
         });
       }
-      setAviso('Se cargaron 8 movimientos de ejemplo.');
+      notificaciones.exito('Se cargaron 8 movimientos de ejemplo.');
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
     } finally {
       setGuardando(false);
     }
@@ -270,24 +294,22 @@ export function Movimientos() {
           >
             Cargar ejemplos
           </Button>
-          <Button onClick={() => setMostrarFormulario((visible) => !visible)}>
+          <Button onClick={() => {
+            limpiarTodo();
+            setMostrarFormulario((visible) => !visible);
+          }}>
             {mostrarFormulario ? 'Cerrar formulario' : '+ Nuevo movimiento'}
           </Button>
         </div>
       </div>
 
-      <AlertaError mensaje={error} onCerrar={() => setError(null)} />
-      {aviso && (
-        <Alert variant="success" dismissible onClose={() => setAviso(null)}>
-          {aviso}
-        </Alert>
-      )}
+      <AlertaErrorCarga mensaje={errorCarga} onReintentar={reintentarCarga} />
 
       {mostrarFormulario && (
         <Card className="mb-4">
           <Card.Body>
             <Card.Title className="h5 mb-3">Registrar movimiento</Card.Title>
-            <Form onSubmit={guardar}>
+            <Form onSubmit={guardar} noValidate>
               <Row className="g-3">
                 <Col xs={12} md={4}>
                   <Form.Group controlId="mov-tipo">
@@ -312,10 +334,15 @@ export function Movimientos() {
                       step="0.01"
                       value={formulario.monto}
                       required
-                      onChange={(evento) =>
-                        setFormulario((previo) => ({ ...previo, monto: evento.target.value }))
-                      }
+                      isInvalid={Boolean(errores.monto)}
+                      onChange={(evento) => {
+                        setFormulario((previo) => ({ ...previo, monto: evento.target.value }));
+                        limpiar('monto');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.monto}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={4}>
@@ -325,10 +352,15 @@ export function Movimientos() {
                       type="date"
                       value={formulario.fecha}
                       required
-                      onChange={(evento) =>
-                        setFormulario((previo) => ({ ...previo, fecha: evento.target.value }))
-                      }
+                      isInvalid={Boolean(errores.fecha)}
+                      onChange={(evento) => {
+                        setFormulario((previo) => ({ ...previo, fecha: evento.target.value }));
+                        limpiar('fecha');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.fecha}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
 
@@ -339,13 +371,18 @@ export function Movimientos() {
                       value={formulario.descripcion}
                       required
                       placeholder="Ejemplo: Supermercado del barrio"
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.descripcion)}
+                      onChange={(evento) => {
                         setFormulario((previo) => ({
                           ...previo,
                           descripcion: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('descripcion');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.descripcion}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={4}>
@@ -354,12 +391,14 @@ export function Movimientos() {
                     <Form.Select
                       value={formulario.categoriaId}
                       required
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.categoriaId)}
+                      onChange={(evento) => {
                         setFormulario((previo) => ({
                           ...previo,
                           categoriaId: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('categoriaId');
+                      }}
                     >
                       <option value="">Seleccione…</option>
                       {categoriasDelTipo.map((categoria) => (
@@ -368,6 +407,9 @@ export function Movimientos() {
                         </option>
                       ))}
                     </Form.Select>
+                    <Form.Control.Feedback type="invalid">
+                      {errores.categoriaId}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
 
@@ -377,12 +419,14 @@ export function Movimientos() {
                     <Form.Select
                       value={formulario.cuentaId}
                       required
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.cuentaId)}
+                      onChange={(evento) => {
                         setFormulario((previo) => ({
                           ...previo,
                           cuentaId: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('cuentaId');
+                      }}
                     >
                       <option value="">Seleccione…</option>
                       {cuentas
@@ -393,6 +437,9 @@ export function Movimientos() {
                           </option>
                         ))}
                     </Form.Select>
+                    <Form.Control.Feedback type="invalid">
+                      {errores.cuentaId}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={4}>
@@ -456,7 +503,10 @@ export function Movimientos() {
                 <Button
                   variant="outline-secondary"
                   type="button"
-                  onClick={() => setMostrarFormulario(false)}
+                  onClick={() => {
+                    limpiarTodo();
+                    setMostrarFormulario(false);
+                  }}
                 >
                   Cancelar
                 </Button>

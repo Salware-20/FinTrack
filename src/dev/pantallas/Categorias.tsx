@@ -1,12 +1,14 @@
 import { Fragment, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Alert, Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
+import { Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
 import type { Categoria, Transaccion } from '../../models';
 import { TipoTransaccion, TIPOS_TRANSACCION } from '../../models';
 import { finanzasService } from '../../services';
 import { formatearMoneda, formatearPorcentaje, formatearTipo } from '../../utils/formato';
-import { AlertaError, Cargando } from '../componentes/Estado';
-import { mensajeDeError } from '../componentes/mensajes';
+import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
+import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { useErroresFormulario } from '../componentes/useErroresFormulario';
+import { mensajeDeError } from '../../utils/errores';
 
 interface DatosCategorias {
   categorias: Categoria[];
@@ -37,6 +39,8 @@ const FORMULARIO_INICIAL: FormularioCategoria = {
   icono: '',
 };
 
+const CAMPOS_CATEGORIA = ['nombre', 'padreId'] as const;
+
 /**
  * Pantalla de categorías de la demo.
  *
@@ -44,11 +48,13 @@ const FORMULARIO_INICIAL: FormularioCategoria = {
  * crear categorías raíz o subcategorías del mismo tipo.
  */
 export function Categorias() {
+  const notificaciones = useNotificaciones();
+  const { errores, limpiar, limpiarTodo, manejar } = useErroresFormulario();
+
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [transacciones, setTransacciones] = useState<Transaccion[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [version, setVersion] = useState(0);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -63,10 +69,11 @@ export function Categorias() {
         setCategorias(datos.categorias);
         setTransacciones(datos.transacciones);
         setCargando(false);
+        setErrorCarga(null);
       })
       .catch((fallo: unknown) => {
         if (!activo) return;
-        setError(mensajeDeError(fallo));
+        setErrorCarga(mensajeDeError(fallo));
         setCargando(false);
       });
 
@@ -77,10 +84,15 @@ export function Categorias() {
 
   const recargar = () => setVersion((actual) => actual + 1);
 
+  const reintentarCarga = () => {
+    setErrorCarga(null);
+    setCargando(true);
+    recargar();
+  };
+
   const crear = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    setError(null);
-    setAviso(null);
+    limpiarTodo();
     setGuardando(true);
 
     try {
@@ -92,17 +104,19 @@ export function Categorias() {
         icono: formulario.icono.trim() || undefined,
       });
       setFormulario((previo) => ({ ...previo, nombre: '', icono: '' }));
-      setAviso('Categoría creada.');
       setMostrarFormulario(false);
+      limpiarTodo();
+      notificaciones.exito('Categoría creada.');
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      manejar(fallo, CAMPOS_CATEGORIA);
     } finally {
       setGuardando(false);
     }
   };
 
   const cambiarTipo = (tipo: TipoTransaccion) => {
+    limpiar('padreId');
     setFormulario((previo) => ({ ...previo, tipo, padreId: '' }));
   };
 
@@ -145,23 +159,21 @@ export function Categorias() {
             Clasificación jerárquica de ingresos y gastos, pensada para Costa Rica.
           </p>
         </div>
-        <Button onClick={() => setMostrarFormulario((visible) => !visible)}>
+        <Button onClick={() => {
+          limpiarTodo();
+          setMostrarFormulario((visible) => !visible);
+        }}>
           {mostrarFormulario ? 'Cerrar formulario' : '+ Nueva categoría'}
         </Button>
       </div>
 
-      <AlertaError mensaje={error} onCerrar={() => setError(null)} />
-      {aviso && (
-        <Alert variant="success" dismissible onClose={() => setAviso(null)}>
-          {aviso}
-        </Alert>
-      )}
+      <AlertaErrorCarga mensaje={errorCarga} onReintentar={reintentarCarga} />
 
       {mostrarFormulario && (
         <Card className="mb-4">
           <Card.Body>
             <Card.Title className="h5 mb-3">Nueva categoría</Card.Title>
-            <Form onSubmit={crear}>
+            <Form onSubmit={crear} noValidate>
               <Row className="g-3">
                 <Col xs={12} md={4}>
                   <Form.Group controlId="cat-nombre">
@@ -170,13 +182,18 @@ export function Categorias() {
                       value={formulario.nombre}
                       required
                       placeholder="Ejemplo: Peajes"
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.nombre)}
+                      onChange={(evento) => {
                         setFormulario((previo) => ({
                           ...previo,
                           nombre: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('nombre');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.nombre}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={6} md={2}>
@@ -201,12 +218,14 @@ export function Categorias() {
                     <Form.Label>Categoría padre (opcional)</Form.Label>
                     <Form.Select
                       value={formulario.padreId}
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.padreId)}
+                      onChange={(evento) => {
                         setFormulario((previo) => ({
                           ...previo,
                           padreId: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('padreId');
+                      }}
                     >
                       <option value="">Sin padre (categoría raíz)</option>
                       {padresDisponibles.map((categoria) => (
@@ -215,6 +234,9 @@ export function Categorias() {
                         </option>
                       ))}
                     </Form.Select>
+                    <Form.Control.Feedback type="invalid">
+                      {errores.padreId}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={6} md={1}>
@@ -258,7 +280,10 @@ export function Categorias() {
                 <Button
                   type="button"
                   variant="outline-secondary"
-                  onClick={() => setMostrarFormulario(false)}
+                  onClick={() => {
+                    limpiarTodo();
+                    setMostrarFormulario(false);
+                  }}
                 >
                   Cancelar
                 </Button>

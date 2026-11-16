@@ -89,9 +89,12 @@ app-contabilidad/
 │   │   └── semilla.ts              # 34 categorías base, cuenta y configuración
 │   ├── dev/                        # Demo: TODO lo visual
 │   │   ├── componentes/
-│   │   │   ├── Estado.tsx          # Cargando, AlertaError, TarjetaKpi
+│   │   │   ├── Estado.tsx          # Cargando, AlertaErrorCarga, TarjetaKpi
+│   │   │   ├── ErrorBoundary.tsx   # Límite de errores de render
 │   │   │   ├── Graficos.tsx        # Gráfico de flujo y de categorías
-│   │   │   └── mensajes.ts         # mensajeDeError()
+│   │   │   ├── Notificaciones.tsx  # Provider y toasts de React Bootstrap
+│   │   │   ├── notificacionesContexto.ts # Contexto y useNotificaciones()
+│   │   │   └── useErroresFormulario.ts   # Errores inline por campo
 │   │   ├── pantallas/
 │   │   │   ├── Acceso.tsx          # Login, registro, recuperación, código
 │   │   │   ├── Dashboard.tsx       # KPIs, gráficos, últimos movimientos
@@ -119,6 +122,7 @@ app-contabilidad/
 │   ├── utils/
 │   │   ├── criptografia.ts         # PBKDF2, sales y códigos
 │   │   ├── descargas.ts            # Descargar y leer archivos
+│   │   ├── errores.ts              # Normalizador de errores de la UI
 │   │   ├── formato.ts              # Moneda CRC, fechas y etiquetas
 │   │   ├── numeros.ts              # Redondeo y sumas
 │   │   └── reportesPdf.ts          # Reportes con jsPDF + AutoTable
@@ -413,7 +417,7 @@ La tabla `usuarios` guarda además `hashContrasena`, `sal`, `hashRecuperacion` y
 | **Reportes** | Rango de fechas con atajos, estado de resultados, gráficos, PDF y CSV |
 | **Mi cuenta** | Perfil, cambio de contraseña, respaldo exportar/importar, reset y eliminación |
 
-La navegación es por estado (no hay router instalado). Toda la UI usa React Bootstrap: no hay archivos CSS nuevos.
+La navegación es por estado (no hay router instalado). Toda la UI usa React Bootstrap: no hay archivos CSS nuevos. Los resultados de las acciones se informan con toasts; los errores de campo se muestran inline y los fallos de carga con una alerta que permite reintentar.
 
 ### Reportes PDF
 
@@ -477,19 +481,35 @@ await finanzasService.crearTransaccion({
 });
 ```
 
-### 4. Manejar errores de validación
+### 4. Manejar errores
+
+La demo aplica cuatro reglas de presentación:
+
+| Situación | Presentación |
+| --- | --- |
+| Acción completada | Toast de éxito abajo a la derecha |
+| Error de campo (`ErrorValidacion.campo`) | Mensaje inline bajo el campo (`isInvalid` + `Form.Control.Feedback`) |
+| Error general o técnico | Toast de error con mensaje en español, sin detalles de Dexie/IndexedDB |
+| Pantalla que no puede cargar | Alerta inline con botón **Reintentar** |
+
+`normalizarError` convierte cualquier fallo en `{ mensaje, campo?, tipo }`. Los tipos son `validacion`, `sesion`, `almacenamiento` y `desconocido`.
 
 ```tsx
-import { ErrorValidacion } from './models';
+import { normalizarError } from './utils/errores';
 
 try {
   await finanzasService.crearTransaccion(datos);
 } catch (fallo) {
-  if (fallo instanceof ErrorValidacion) {
-    mostrarError(fallo.campo, fallo.message);
+  const error = normalizarError(fallo);
+  if (error.campo === 'monto') {
+    setErrorMonto(error.mensaje); // inline
+  } else {
+    notificaciones.error(error.mensaje); // toast
   }
 }
 ```
+
+En el login no se marcan campos concretos: el toast usa el mismo mensaje para correo inexistente o contraseña incorrecta. Las acciones destructivas conservan `window.confirm`; el toast solo informa el resultado. `ErrorBoundary` evita que un fallo de render deje la sección en blanco.
 
 ### 5. Formatear valores
 
@@ -533,7 +553,7 @@ Las pantallas de `src/dev/pantallas` son la referencia completa de consumo del s
 ```bash
 npm run build   # tsc -b + vite build
 npm run lint    # ESLint
-npm test        # 44 comprobaciones de comportamiento
+npm test        # 48 comprobaciones de comportamiento
 ```
 
 La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModule` y cubre:
@@ -545,6 +565,7 @@ La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModu
 - reportes, estado de resultados, flujo mensual y CSV;
 - aislamiento entre dos usuarios (lectura y escritura);
 - respaldo, importación con ids regenerados y reseteo;
+- normalización de errores de validación, sesión, cuota de almacenamiento y fallos técnicos;
 - cambio de contraseña, recuperación con rotación de código y eliminación de cuenta.
 
 ---
@@ -576,3 +597,4 @@ La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModu
 | 2026-11-15 | Demo visual completa solo en `src/dev`: acceso, dashboard, movimientos, cuentas, categorías, reportes y mi cuenta, con navegación por estado y React Bootstrap. No se tocaron `App.tsx`, `main.tsx` ni los CSS. | `src/dev/*`, `demo.html` |
 | 2026-11-15 | Prueba de humo automatizada (`npm test`) con 44 verificaciones sobre `fake-indexeddb`; se corrige la importación de respaldos para regenerar identificadores y remapear referencias. | `scripts/smoke.mjs`, `package.json`, `src/services/LocalFinanzasService.ts` |
 | 2026-11-15 | README reescrito como documento técnico del MVP local-first: arquitectura, seguridad, modelo, contrato v2, persistencia, demo y verificación. | `README.md` |
+| 2026-11-15 | **Nivel B — manejo de errores en la demo.** Normalizador compartido (`normalizarError`), toasts de React Bootstrap, validación inline por campo, alertas con reintento para cargas fallidas y `ErrorBoundary`. El login usa un mensaje genérico para no revelar si el correo existe; las acciones destructivas conservan la confirmación. La prueba de humo sube de 44 a 48 comprobaciones. | `src/utils/errores.ts`, `src/dev/componentes/Notificaciones.tsx`, `notificacionesContexto.ts`, `useErroresFormulario.ts`, `ErrorBoundary.tsx`, `Estado.tsx`, `src/dev/pantallas/*`, `src/dev/DemoDatos.tsx`, `scripts/smoke.mjs`, `README.md` |

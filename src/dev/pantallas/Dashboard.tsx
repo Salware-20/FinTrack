@@ -12,8 +12,8 @@ import {
   inicioDeMes,
 } from '../../utils/formato';
 import { sumarMontos } from '../../utils/numeros';
-import { AlertaError, Cargando, TarjetaKpi } from '../componentes/Estado';
-import { mensajeDeError } from '../componentes/mensajes';
+import { AlertaErrorCarga, Cargando, TarjetaKpi } from '../componentes/Estado';
+import { mensajeDeError } from '../../utils/errores';
 import { GraficoCategorias, GraficoFlujo } from '../componentes/Graficos';
 import type { Seccion } from '../secciones';
 
@@ -30,7 +30,8 @@ export function Dashboard({ usuario, irA }: Props) {
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [ultimas, setUltimas] = useState<Transaccion[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let activo = true;
@@ -51,21 +52,32 @@ export function Dashboard({ usuario, irA }: Props) {
         setCategorias(categoriasCargadas);
         setCuentas(cuentasCargadas);
         setUltimas(transacciones.slice(0, 7));
+        setErrorCarga(null);
         setCargando(false);
       })
       .catch((fallo: unknown) => {
         if (!activo) return;
-        setError(mensajeDeError(fallo));
+        setErrorCarga(mensajeDeError(fallo));
         setCargando(false);
       });
 
     return () => {
       activo = false;
     };
-  }, []);
+  }, [version]);
+
+  const reintentarCarga = () => {
+    setErrorCarga(null);
+    setCargando(true);
+    setVersion((actual) => actual + 1);
+  };
 
   if (cargando) return <Cargando texto="Calculando su situación financiera…" />;
-  if (error) return <AlertaError mensaje={error} />;
+  if (errorCarga) {
+    return (
+      <AlertaErrorCarga mensaje={errorCarga} onReintentar={reintentarCarga} />
+    );
+  }
   if (!resumenMes || !resumenTotal) return null;
 
   const patrimonio = sumarMontos(saldos.map((cuenta) => cuenta.saldo));

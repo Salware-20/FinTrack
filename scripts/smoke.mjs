@@ -22,6 +22,8 @@ const { LocalFinanzasService } = await servidor.ssrLoadModule(
   '/src/services/LocalFinanzasService.ts',
 );
 const { BaseDatosFinanzas } = await servidor.ssrLoadModule('/src/db/baseDatos.ts');
+const { normalizarError } = await servidor.ssrLoadModule('/src/utils/errores.ts');
+const { ErrorValidacion } = await servidor.ssrLoadModule('/src/models/errores.ts');
 
 let pruebas = 0;
 function afirmar(condicion, mensaje) {
@@ -44,6 +46,36 @@ const db = new BaseDatosFinanzas('fintrack-smoke');
 const servicio = new LocalFinanzasService(db);
 
 try {
+  console.log('\nNormalizacion de errores');
+  const errorCampo = normalizarError(
+    new ErrorValidacion('El monto debe ser un numero mayor que cero.', 'monto'),
+  );
+  afirmar(
+    errorCampo.tipo === 'validacion' &&
+      errorCampo.campo === 'monto' &&
+      errorCampo.mensaje.includes('monto'),
+    'clasifica la validacion con su campo',
+  );
+
+  const errorSesion = normalizarError(
+    new ErrorValidacion('Debe iniciar sesion para continuar.', 'sesion'),
+  );
+  afirmar(errorSesion.tipo === 'sesion', 'detecta los errores de sesion');
+
+  const errorCuota = normalizarError(
+    new DOMException('The quota has been exceeded.', 'QuotaExceededError'),
+  );
+  afirmar(
+    errorCuota.tipo === 'almacenamiento' && errorCuota.mensaje.includes('espacio'),
+    'traduce la falta de cuota a un mensaje util',
+  );
+
+  const errorTecnico = normalizarError(new Error('Dexie: UnknownError'));
+  afirmar(
+    errorTecnico.tipo === 'desconocido' && !errorTecnico.mensaje.includes('Dexie'),
+    'oculta los detalles tecnicos',
+  );
+
   console.log('\nRegistro y datos iniciales');
   const registroA = await servicio.registrar({
     nombre: 'Ana Rodríguez',
