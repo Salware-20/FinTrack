@@ -20,7 +20,7 @@ Aplicación web **local-first** para registrar ingresos y gastos, controlar cuen
 | Reportes | ✅ Listo | Estado de resultados, gastos por categoría, PDF y CSV |
 | Interfaz de producto | 🚧 Fuera de esta entrega | La construirá el compañero de frontend |
 | Demo funcional | ✅ Listo | `demo.html`: acceso, dashboard, movimientos, cuentas, categorías, reportes y perfil |
-| Modo offline (PWA) | ⏳ Pendiente | La app ya no requiere red; falta manifiesto y service worker |
+| Modo offline (PWA) | ✅ Listo | Manifiesto, service worker y precache; instalable y 100 % offline |
 | Sincronización remota | ⏳ Futuro | Documentada como migración opcional |
 
 ### Alcance de esta entrega
@@ -32,6 +32,7 @@ Aplicación web **local-first** para registrar ingresos y gastos, controlar cuen
 5. Exportación de respaldos JSON, CSV y reportes PDF.
 6. Movimientos recurrentes diarios, semanales y mensuales sin proyecciones futuras.
 7. Demo funcional con React + Bootstrap, **sin CSS propio**.
+8. PWA instalable con manifiesto, service worker y precache de todos los assets.
 
 **Regla de la entrega:** toda la interfaz visual vive solo en `src/dev` y `demo.html`. **No se modificaron** `src/App.tsx`, `src/main.tsx`, `src/App.css` ni `src/index.css`; el compañero de frontend los trabajará después. La demo se apoya únicamente en React Bootstrap.
 
@@ -47,6 +48,7 @@ Aplicación web **local-first** para registrar ingresos y gastos, controlar cuen
 | Persistencia | Dexie 4 + IndexedDB |
 | Gráficos | Chart.js 4 + react-chartjs-2 |
 | Reportes | jsPDF + jspdf-autotable |
+| PWA | `vite-plugin-pwa` 2 + Workbox 7 |
 | Pruebas de humo | Node + `fake-indexeddb` + `vite.ssrLoadModule` |
 | Calidad | ESLint 10 + `tsc` |
 
@@ -67,7 +69,8 @@ npm run dev
 | `npm run build` | Verificación de tipos + build de producción |
 | `npm run lint` | Análisis estático con ESLint |
 | `npm test` | Pruebas de humo del servicio con `fake-indexeddb` |
-| `npm run preview` | Sirve el build de producción |
+| `npm run preview` | Sirve el build de producción (necesario para probar la PWA) |
+| `node scripts/generar-iconos.mjs` | Regenera `public/pwa-192x192.png` y `public/pwa-512x512.png` |
 
 **Demo funcional:** `http://localhost:5173/demo.html`
 
@@ -81,7 +84,14 @@ La demo no forma parte del build de producción: `vite build` solo incluye `inde
 app-contabilidad/
 ├── demo.html                       # Entrada de la demo (solo desarrollo)
 ├── index.html                      # Entrada de la aplicación real
+├── vite.config.ts                  # React + VitePWA (manifiesto y service worker)
+├── public/
+│   ├── favicon.svg                 # Icono del navegador
+│   ├── icons.svg                   # Iconos auxiliares
+│   ├── pwa-192x192.png             # Icono PWA 192 x 192
+│   └── pwa-512x512.png             # Icono PWA 512 x 512
 ├── scripts/
+│   ├── generar-iconos.mjs          # Regenera los PNG de la PWA sin dependencias
 │   └── smoke.mjs                   # Pruebas de humo del servicio (Node)
 ├── src/
 │   ├── config/
@@ -507,6 +517,41 @@ La navegación es por estado (no hay router instalado). Toda la UI usa React Boo
 
 ---
 
+## 📲 PWA e instalación offline
+
+La aplicación se puede instalar en escritorio o móvil y funciona sin conexión después de la primera visita.
+
+### Configuración
+
+`vite.config.ts` integra `VitePWA` con:
+
+- `registerType: 'autoUpdate'`: la versión nueva del service worker se activa sola y `cleanupOutdatedCaches` elimina las cachés anteriores.
+- `injectRegister: 'auto'`: el registro del service worker se inyecta en el HTML generado, **sin tocar `src/main.tsx`**.
+- `workbox.globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']`: precachea todo el shell estático.
+- `navigateFallback: '/index.html'`: cualquier ruta del SPA se resuelve desde la caché.
+
+El manifiesto declara `name`, `short_name`, `description`, `start_url: "/"`, `display: "standalone"`, `background_color: "#ffffff"`, `theme_color: "#0d6efd"`, `lang: "es-CR"` e iconos de 192 y 512 px.
+
+| Artefacto del build | Contenido |
+| --- | --- |
+| `dist/manifest.webmanifest` | Manifiesto de la aplicación |
+| `dist/sw.js` | Service worker con el precache de los assets |
+| `dist/registerSW.js` | Registro inyectado en `index.html` |
+| `dist/workbox-*.js` | Runtime de Workbox |
+
+Los iconos son PNG generados localmente por `scripts/generar-iconos.mjs`, un script sin dependencias que dibuja el cuadrado azul con barras blancas y escribe el PNG con `node:zlib`. Se pueden sustituir por un diseño propio manteniendo los nombres y tamaños.
+
+### Instalación y prueba offline
+
+1. `npm run build` y `npm run preview`.
+2. Abrir `http://localhost:4173`.
+3. Instalar desde el icono de la barra de direcciones (escritorio) o desde el menú del navegador → “Instalar aplicación” / “Añadir a pantalla de inicio” (móvil).
+4. En DevTools → Application → Service Workers, activar **Offline** y recargar: la app abre y opera con IndexedDB.
+
+> El service worker solo se registra en `localhost` o HTTPS. La primera visita necesita red para descargar la app; a partir de ahí todo queda cacheado. `demo.html`, `src/dev` y el código de desarrollo no entran al build ni al precache.
+
+---
+
 ## 👩‍💻 Guía rápida para el frontend
 
 ### 1. Arrancar la demo y entrar
@@ -648,12 +693,21 @@ La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModu
 - normalización de errores de validación, sesión, cuota de almacenamiento y fallos técnicos;
 - cambio de contraseña, recuperación con rotación de código y eliminación de cuenta.
 
+El build de producción genera `dist/manifest.webmanifest`, `dist/sw.js` y los iconos de la PWA, y **no incluye** `demo.html` ni `src/dev`. Para verificarlo:
+
+```powershell
+npm run build
+Select-String -Path dist/sw.js -Pattern 'demo\.html|src/dev'   # sin coincidencias
+```
+
+La instalación y el modo offline se comprueban con `npm run preview` y DevTools → Application → Manifest y Service Workers.
+
 ---
 
 ## 🗺️ Pendientes (roadmap)
 
 - [ ] Interfaz de producto en `App.tsx` (a cargo del compañero de frontend).
-- [ ] Manifiesto PWA y service worker para instalación offline.
+- [x] Manifiesto PWA y service worker para instalación offline.
 - [ ] Presupuestos por categoría y alertas.
 - [ ] Edición de movimientos desde la UI (el servicio ya la soporta).
 - [ ] Edición de monto, categoría y frecuencia de reglas recurrentes desde la UI.
@@ -680,3 +734,4 @@ La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModu
 | 2026-11-15 | README reescrito como documento técnico del MVP local-first: arquitectura, seguridad, modelo, contrato v2, persistencia, demo y verificación. | `README.md` |
 | 2026-11-15 | **Nivel B — manejo de errores en la demo.** Normalizador compartido (`normalizarError`), toasts de React Bootstrap, validación inline por campo, alertas con reintento para cargas fallidas y `ErrorBoundary`. El login usa un mensaje genérico para no revelar si el correo existe; las acciones destructivas conservan la confirmación. La prueba de humo sube de 44 a 48 comprobaciones. | `src/utils/errores.ts`, `src/dev/componentes/Notificaciones.tsx`, `notificacionesContexto.ts`, `useErroresFormulario.ts`, `ErrorBoundary.tsx`, `Estado.tsx`, `src/dev/pantallas/*`, `src/dev/DemoDatos.tsx`, `scripts/smoke.mjs`, `README.md` |
 | 2026-11-15 | **Movimientos recurrentes.** Nueva entidad `Recurrencia` con frecuencias diaria, semanal y mensual; tabla Dexie v2, índice `recurrenciaId` y migración sin pérdida de datos. El servicio crea reglas, genera ocurrencias vencidas hasta hoy (nunca futuras), recupera atrasos al iniciar sesión, evita duplicados con avance atómico de `proximaFecha` y conserva el historial al pausar o eliminar. Fin de mes anclado al día original. Respaldos v2 con retrocompatibilidad v1. UI en Movimientos: casilla “Repetir”, fecha final opcional y tarjeta de reglas con pausar/reanudar/eliminar. La prueba de humo sube de 48 a 75 comprobaciones. | `src/models/Recurrencia.ts`, `tipos.ts`, `Transaccion.ts`, `index.ts`, `src/utils/recurrencia.ts`, `formato.ts`, `src/db/baseDatos.ts`, `src/config/app.ts`, `src/services/*`, `src/dev/pantallas/Movimientos.tsx`, `src/dev/componentes/TablaRecurrencias.tsx`, `src/dev/DemoDatos.tsx`, `scripts/smoke.mjs`, `README.md` |
+| 2026-11-16 | **PWA offline e instalable.** Se instala `vite-plugin-pwa` 2 y se configura `VitePWA` con `registerType: 'autoUpdate'`, precache de JS/CSS/HTML/ICO/PNG/SVG/WOFF2, `cleanupOutdatedCaches` y `navigateFallback` al `index.html`. Manifiesto FinTrack en modo `standalone` con `theme_color: #0d6efd` e iconos de 192 y 512 px. El registro del service worker se inyecta automáticamente, sin tocar `main.tsx`. Se añaden los iconos PNG generados por `scripts/generar-iconos.mjs` (sin dependencias) y en `index.html` el `theme-color` y el `apple-touch-icon`. El build produce `manifest.webmanifest` y `sw.js` sin incluir `demo.html` ni `src/dev`; build, lint y 75 pruebas en verde. | `package.json`, `package-lock.json`, `vite.config.ts`, `index.html`, `public/pwa-192x192.png`, `public/pwa-512x512.png`, `scripts/generar-iconos.mjs`, `README.md` |
