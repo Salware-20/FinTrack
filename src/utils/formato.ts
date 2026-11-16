@@ -1,6 +1,11 @@
 import { CONFIG_APP } from '../config/app';
 import { MetodoPago } from '../models/tipos';
-import type { EstadoTransaccion, TipoCuenta, TipoTransaccion } from '../models/tipos';
+import type {
+  EstadoTransaccion,
+  FrecuenciaRecurrencia,
+  TipoCuenta,
+  TipoTransaccion,
+} from '../models/tipos';
 
 const ETIQUETAS_METODO_PAGO: Record<MetodoPago, string> = {
   [MetodoPago.Efectivo]: 'Efectivo',
@@ -20,6 +25,12 @@ const ETIQUETAS_TIPO_CUENTA: Record<TipoCuenta, string> = {
 const ETIQUETAS_ESTADO: Record<EstadoTransaccion, string> = {
   confirmado: 'Confirmado',
   pendiente: 'Pendiente',
+};
+
+const ETIQUETAS_FRECUENCIA: Record<FrecuenciaRecurrencia, string> = {
+  diaria: 'Diaria',
+  semanal: 'Semanal',
+  mensual: 'Mensual',
 };
 
 const formateadoresMoneda = new Map<string, Intl.NumberFormat>();
@@ -110,6 +121,11 @@ export function formatearTipoCuenta(tipo: TipoCuenta): string {
 /** Nombre legible de un estado de transacción. */
 export function formatearEstado(estado: EstadoTransaccion): string {
   return ETIQUETAS_ESTADO[estado] ?? estado;
+}
+
+/** Nombre legible de una frecuencia recurrente. */
+export function formatearFrecuencia(frecuencia: FrecuenciaRecurrencia): string {
+  return ETIQUETAS_FRECUENCIA[frecuencia] ?? frecuencia;
 }
 
 /** Fecha de hoy en formato AAAA-MM-DD. */

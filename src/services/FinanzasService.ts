@@ -1,19 +1,23 @@
 import type { Categoria, DatosCategoria } from '../models/Categoria';
 import type { Cuenta, DatosCuenta } from '../models/Cuenta';
+import type { DatosRecurrencia, Recurrencia } from '../models/Recurrencia';
 import type { DatosTransaccion, Transaccion } from '../models/Transaccion';
 import type { DatosTransferencia, Transferencia } from '../models/Transferencia';
 import type { DatosUsuario, Usuario } from '../models/Usuario';
 import type {
+  CambiosRecurrencia,
   ConfiguracionUsuario,
   EstadoResultados,
   FiltroTransacciones,
   NuevaCategoria,
   NuevaCuenta,
+  NuevaRecurrencia,
   NuevaTransaccion,
   NuevaTransferencia,
   NuevoUsuario,
   ResumenFinanciero,
   ResumenMensual,
+  ResultadoCreacionRecurrencia,
   ResultadoRecuperacion,
   ResultadoRegistro,
   SaldoCuenta,
@@ -29,6 +33,7 @@ export interface RespaldoFinanzas {
   categorias: DatosCategoria[];
   transacciones: DatosTransaccion[];
   transferencias: DatosTransferencia[];
+  recurrencias: DatosRecurrencia[];
   configuracion: ConfiguracionUsuario;
 }
 
@@ -88,6 +93,19 @@ export interface FinanzasService {
     cambios: Partial<NuevaTransaccion>,
   ): Promise<Transaccion>;
   eliminarTransaccion(id: string): Promise<void>;
+
+  // --- Recurrencias ---------------------------------------------------------
+  listarRecurrencias(): Promise<Recurrencia[]>;
+  /** Crea la regla y genera las ocurrencias cuya fecha ya llegó. */
+  crearRecurrencia(datos: NuevaRecurrencia): Promise<ResultadoCreacionRecurrencia>;
+  actualizarRecurrencia(
+    id: string,
+    cambios: CambiosRecurrencia,
+  ): Promise<Recurrencia>;
+  /** Elimina la regla; las transacciones ya generadas se conservan. */
+  eliminarRecurrencia(id: string): Promise<void>;
+  /** Genera las ocurrencias vencidas de todas las reglas activas del usuario. */
+  procesarRecurrencias(): Promise<number>;
 
   // --- Reportes -------------------------------------------------------------
   obtenerResumen(filtro?: FiltroTransacciones): Promise<ResumenFinanciero>;

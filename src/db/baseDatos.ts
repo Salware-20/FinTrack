@@ -3,6 +3,7 @@ import type { Table } from 'dexie';
 import { CONFIG_APP } from '../config/app';
 import type { DatosCategoria } from '../models/Categoria';
 import type { DatosCuenta } from '../models/Cuenta';
+import type { DatosRecurrencia } from '../models/Recurrencia';
 import type { DatosTransaccion } from '../models/Transaccion';
 import type { DatosTransferencia } from '../models/Transferencia';
 import type { ConfiguracionUsuario } from '../models/tipos';
@@ -29,6 +30,7 @@ export type RegistroCuenta = DatosCuenta;
 export type RegistroCategoria = DatosCategoria;
 export type RegistroTransaccion = DatosTransaccion;
 export type RegistroTransferencia = DatosTransferencia;
+export type RegistroRecurrencia = DatosRecurrencia;
 export type RegistroConfiguracion = ConfiguracionUsuario;
 
 /** Base de datos local (IndexedDB) de la aplicación. */
@@ -38,18 +40,32 @@ export class BaseDatosFinanzas extends Dexie {
   categorias!: Table<RegistroCategoria, string>;
   transacciones!: Table<RegistroTransaccion, string>;
   transferencias!: Table<RegistroTransferencia, string>;
+  recurrencias!: Table<RegistroRecurrencia, string>;
   configuracion!: Table<RegistroConfiguracion, string>;
 
   constructor(nombre: string = CONFIG_APP.nombreBaseDatos) {
     super(nombre);
 
-    this.version(CONFIG_APP.versionBaseDatos).stores({
+    this.version(1).stores({
       usuarios: 'id, &correo',
       cuentas: 'id, usuarioId, [usuarioId+tipo]',
       categorias: 'id, usuarioId, padreId, [usuarioId+tipo]',
       transacciones:
         'id, usuarioId, cuentaId, categoriaId, fecha, [usuarioId+fecha], [usuarioId+cuentaId], [usuarioId+categoriaId]',
       transferencias: 'id, usuarioId, cuentaOrigenId, cuentaDestinoId, [usuarioId+fecha]',
+      configuracion: 'usuarioId',
+    });
+
+    // v2: reglas de movimientos recurrentes y vínculo desde cada transacción
+    // generada. Dexie migra la base existente sin perder datos.
+    this.version(2).stores({
+      usuarios: 'id, &correo',
+      cuentas: 'id, usuarioId, [usuarioId+tipo]',
+      categorias: 'id, usuarioId, padreId, [usuarioId+tipo]',
+      transacciones:
+        'id, usuarioId, cuentaId, categoriaId, fecha, recurrenciaId, [usuarioId+fecha], [usuarioId+cuentaId], [usuarioId+categoriaId], [usuarioId+recurrenciaId]',
+      transferencias: 'id, usuarioId, cuentaOrigenId, cuentaDestinoId, [usuarioId+fecha]',
+      recurrencias: 'id, usuarioId, [usuarioId+activa]',
       configuracion: 'usuarioId',
     });
   }

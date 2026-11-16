@@ -14,7 +14,7 @@ export const CONFIG_APP = {
   /** Nombre de la base IndexedDB. */
   nombreBaseDatos: 'fintrack',
   /** Versión del esquema de Dexie. Subir al cambiar tablas o índices. */
-  versionBaseDatos: 1,
+  versionBaseDatos: 2,
   /** Clave de sesión en sessionStorage. */
   claveSesion: 'fintrack:sesion:v1',
   /** Longitud mínima de contraseña. */

@@ -9,6 +9,8 @@ import {
 import { Categoria } from '../models/Categoria';
 import { Cuenta } from '../models/Cuenta';
 import { ErrorValidacion } from '../models/errores';
+import { Recurrencia } from '../models/Recurrencia';
+import type { DatosRecurrencia } from '../models/Recurrencia';
 import { Transaccion } from '../models/Transaccion';
 import type { DatosTransaccion } from '../models/Transaccion';
 import { Transferencia } from '../models/Transferencia';
@@ -19,17 +21,20 @@ import {
   TipoTransaccion,
 } from '../models/tipos';
 import type {
+  CambiosRecurrencia,
   ConfiguracionUsuario,
   EstadoResultados,
   FiltroTransacciones,
   NuevaCategoria,
   NuevaCuenta,
+  NuevaRecurrencia,
   NuevaTransaccion,
   NuevaTransferencia,
   NuevoUsuario,
   ResumenFinanciero,
   ResumenMensual,
   ResumenPorCategoria,
+  ResultadoCreacionRecurrencia,
   ResultadoRecuperacion,
   ResultadoRegistro,
   SaldoCuenta,
@@ -44,6 +49,8 @@ import {
   verificarHash,
 } from '../utils/criptografia';
 import { redondearMonto, sumarMontos } from '../utils/numeros';
+import { fechaHoy } from '../utils/formato';
+import { planificarOcurrencias } from '../utils/recurrencia';
 import type { FinanzasService, RespaldoFinanzas } from './FinanzasService';
 
 const PATRON_CORREO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -282,11 +289,13 @@ export class LocalFinanzasService implements FinanzasService {
         this.db.categorias,
         this.db.transacciones,
         this.db.transferencias,
+        this.db.recurrencias,
         this.db.configuracion,
       ],
       async () => {
         await this.db.transacciones.where('usuarioId').equals(sesion.id).delete();
         await this.db.transferencias.where('usuarioId').equals(sesion.id).delete();
+        await this.db.recurrencias.where('usuarioId').equals(sesion.id).delete();
         await this.db.cuentas.where('usuarioId').equals(sesion.id).delete();
         await this.db.categorias.where('usuarioId').equals(sesion.id).delete();
         await this.db.configuracion.delete(sesion.id);
@@ -390,6 +399,19 @@ export class LocalFinanzasService implements FinanzasService {
     }
 
     await this.db.cuentas.put(actualizada.toJSON());
+
+    // Una cuenta archivada no admite movimientos nuevos: sus reglas se pausan
+    // para no acumular ocurrencias que luego no podrían aplicarse.
+    if (!actualizada.activa) {
+      await this.db.recurrencias
+        .where('usuarioId')
+        .equals(sesion.id)
+        .filter(
+          (recurrencia) => recurrencia.cuentaId === id && recurrencia.activa,
+        )
+        .modify({ activa: false });
+    }
+
     return actualizada;
   }
 
@@ -594,6 +616,93 @@ export class LocalFinanzasService implements FinanzasService {
   }
 
   // ---------------------------------------------------------------------------
+  // Recurrencias
+  // ---------------------------------------------------------------------------
+
+  async listarRecurrencias(): Promise<Recurrencia[]> {
+    const sesion = await this.requerirSesion();
+    const registros = await this.db.recurrencias
+      .where('usuarioId')
+      .equals(sesion.id)
+      .toArray();
+
+    return registros
+      .map((registro) => Recurrencia.desdeJSON(registro))
+      .sort(
+        (a, b) =>
+          Number(b.activa) - Number(a.activa) ||
+          a.proximaFecha.localeCompare(b.proximaFecha),
+      );
+  }
+
+  async crearRecurrencia(
+    datos: NuevaRecurrencia,
+  ): Promise<ResultadoCreacionRecurrencia> {
+    const sesion = await this.requerirSesion();
+    await this.validarReferencias(
+      sesion.id,
+      datos.cuentaId,
+      datos.categoriaId,
+      datos.tipo,
+    );
+
+    const recurrencia = Recurrencia.crear(datos, sesion.id);
+    await this.db.recurrencias.add(recurrencia.toJSON());
+
+    const generadas = await this.procesarRecurrenciasDe(
+      sesion.id,
+      recurrencia.id,
+    );
+    const registro = await this.db.recurrencias.get(recurrencia.id);
+
+    return {
+      recurrencia: Recurrencia.desdeJSON(registro ?? recurrencia.toJSON()),
+      generadas,
+    };
+  }
+
+  async actualizarRecurrencia(
+    id: string,
+    cambios: CambiosRecurrencia,
+  ): Promise<Recurrencia> {
+    const sesion = await this.requerirSesion();
+    const registro = await this.db.recurrencias.get(id);
+
+    if (!registro || registro.usuarioId !== sesion.id) {
+      throw new ErrorValidacion(`No existe la recurrencia "${id}".`, 'id');
+    }
+
+    const recurrencia = Recurrencia.desdeJSON(registro);
+    recurrencia.actualizar(cambios);
+    await this.db.recurrencias.put(recurrencia.toJSON());
+
+    // Al reanudar se recuperan las ocurrencias vencidas durante la pausa.
+    if (recurrencia.activa) {
+      await this.procesarRecurrenciasDe(sesion.id, id);
+    }
+
+    const actualizado = await this.db.recurrencias.get(id);
+    return Recurrencia.desdeJSON(actualizado ?? recurrencia.toJSON());
+  }
+
+  async eliminarRecurrencia(id: string): Promise<void> {
+    const sesion = await this.requerirSesion();
+    const registro = await this.db.recurrencias.get(id);
+
+    if (!registro || registro.usuarioId !== sesion.id) {
+      throw new ErrorValidacion(`No existe la recurrencia "${id}".`, 'id');
+    }
+
+    // Las transacciones ya generadas se conservan: son historial real.
+    await this.db.recurrencias.delete(id);
+  }
+
+  async procesarRecurrencias(): Promise<number> {
+    const sesion = await this.requerirSesion();
+    return this.procesarRecurrenciasDe(sesion.id);
+  }
+
+  // ---------------------------------------------------------------------------
   // Reportes
   // ---------------------------------------------------------------------------
 
@@ -672,14 +781,21 @@ export class LocalFinanzasService implements FinanzasService {
 
   async exportarRespaldo(): Promise<RespaldoFinanzas> {
     const sesion = await this.requerirSesion();
-    const [cuentas, categorias, transacciones, transferencias, configuracion] =
-      await Promise.all([
-        this.db.cuentas.where('usuarioId').equals(sesion.id).toArray(),
-        this.db.categorias.where('usuarioId').equals(sesion.id).toArray(),
-        this.db.transacciones.where('usuarioId').equals(sesion.id).toArray(),
-        this.db.transferencias.where('usuarioId').equals(sesion.id).toArray(),
-        this.configuracionDe(sesion.id),
-      ]);
+    const [
+      cuentas,
+      categorias,
+      transacciones,
+      transferencias,
+      recurrencias,
+      configuracion,
+    ] = await Promise.all([
+      this.db.cuentas.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.categorias.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.transacciones.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.transferencias.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.recurrencias.where('usuarioId').equals(sesion.id).toArray(),
+      this.configuracionDe(sesion.id),
+    ]);
 
     return {
       version: CONFIG_APP.versionBaseDatos,
@@ -689,6 +805,7 @@ export class LocalFinanzasService implements FinanzasService {
       categorias,
       transacciones,
       transferencias,
+      recurrencias,
       configuracion,
     };
   }
@@ -698,7 +815,7 @@ export class LocalFinanzasService implements FinanzasService {
 
     if (
       !respaldo ||
-      respaldo.version !== CONFIG_APP.versionBaseDatos ||
+      !this.esVersionDeRespaldoValida(respaldo.version) ||
       !Array.isArray(respaldo.cuentas) ||
       !Array.isArray(respaldo.categorias) ||
       !Array.isArray(respaldo.transacciones) ||
@@ -709,6 +826,12 @@ export class LocalFinanzasService implements FinanzasService {
         'respaldo',
       );
     }
+
+    // Los respaldos v1 no incluyen reglas recurrentes: se aceptan igual y se
+    // importan como una lista vacía.
+    const recurrenciasRespaldo = Array.isArray(respaldo.recurrencias)
+      ? respaldo.recurrencias
+      : [];
 
     try {
       // Los respaldos conservan los ids del usuario que los generó. Al importar
@@ -722,6 +845,11 @@ export class LocalFinanzasService implements FinanzasService {
       const mapaCategorias = new Map<string, string>();
       for (const categoria of respaldo.categorias) {
         mapaCategorias.set(categoria.id, `cat-${crypto.randomUUID()}`);
+      }
+
+      const mapaRecurrencias = new Map<string, string>();
+      for (const recurrencia of recurrenciasRespaldo) {
+        mapaRecurrencias.set(recurrencia.id, `rec-${crypto.randomUUID()}`);
       }
 
       const cuentas = respaldo.cuentas.map((cuenta) =>
@@ -755,6 +883,32 @@ export class LocalFinanzasService implements FinanzasService {
         respaldo.categorias.map((categoria) => [categoria.id, categoria.tipo]),
       );
 
+      const recurrencias = recurrenciasRespaldo.map((recurrencia) => {
+        const cuentaId = mapaCuentas.get(recurrencia.cuentaId);
+        const categoriaId = mapaCategorias.get(recurrencia.categoriaId);
+        if (!cuentaId || !categoriaId) {
+          throw new ErrorValidacion(
+            'El respaldo tiene reglas con cuentas o categorías inexistentes.',
+            'respaldo',
+          );
+        }
+        if (tiposDeCategoria.get(recurrencia.categoriaId) !== recurrencia.tipo) {
+          throw new ErrorValidacion(
+            'El respaldo tiene reglas cuya categoría no coincide con el tipo.',
+            'respaldo',
+          );
+        }
+
+        return Recurrencia.desdeJSON({
+          ...recurrencia,
+          id: mapaRecurrencias.get(recurrencia.id) as string,
+          usuarioId: sesion.id,
+          cuentaId,
+          categoriaId,
+          fechaFin: recurrencia.fechaFin ?? null,
+        });
+      });
+
       const transacciones = respaldo.transacciones.map((transaccion) => {
         const cuentaId = mapaCuentas.get(transaccion.cuentaId);
         const categoriaId = mapaCategorias.get(transaccion.categoriaId);
@@ -771,12 +925,20 @@ export class LocalFinanzasService implements FinanzasService {
           );
         }
 
+        const recurrenciaId = transaccion.recurrenciaId
+          ? mapaRecurrencias.get(transaccion.recurrenciaId)
+          : undefined;
+
         return Transaccion.desdeJSON({
           ...transaccion,
           id: `trx-${crypto.randomUUID()}`,
           usuarioId: sesion.id,
           cuentaId,
           categoriaId,
+          recurrenciaId,
+          recurrenciaFecha: recurrenciaId
+            ? transaccion.recurrenciaFecha
+            : undefined,
         });
       });
 
@@ -811,11 +973,13 @@ export class LocalFinanzasService implements FinanzasService {
           this.db.categorias,
           this.db.transacciones,
           this.db.transferencias,
+          this.db.recurrencias,
           this.db.configuracion,
         ],
         async () => {
           await this.db.transacciones.where('usuarioId').equals(sesion.id).delete();
           await this.db.transferencias.where('usuarioId').equals(sesion.id).delete();
+          await this.db.recurrencias.where('usuarioId').equals(sesion.id).delete();
           await this.db.cuentas.where('usuarioId').equals(sesion.id).delete();
           await this.db.categorias.where('usuarioId').equals(sesion.id).delete();
 
@@ -828,6 +992,9 @@ export class LocalFinanzasService implements FinanzasService {
           );
           await this.db.transferencias.bulkAdd(
             transferencias.map((transferencia) => transferencia.toJSON()),
+          );
+          await this.db.recurrencias.bulkAdd(
+            recurrencias.map((recurrencia) => recurrencia.toJSON()),
           );
           await this.db.configuracion.put(configuracion);
         },
@@ -897,11 +1064,13 @@ export class LocalFinanzasService implements FinanzasService {
         this.db.categorias,
         this.db.transacciones,
         this.db.transferencias,
+        this.db.recurrencias,
         this.db.configuracion,
       ],
       async () => {
         await this.db.transacciones.where('usuarioId').equals(sesion.id).delete();
         await this.db.transferencias.where('usuarioId').equals(sesion.id).delete();
+        await this.db.recurrencias.where('usuarioId').equals(sesion.id).delete();
         await this.db.cuentas.where('usuarioId').equals(sesion.id).delete();
         await this.db.categorias.where('usuarioId').equals(sesion.id).delete();
         await this.db.configuracion.delete(sesion.id);
@@ -916,6 +1085,18 @@ export class LocalFinanzasService implements FinanzasService {
   // ---------------------------------------------------------------------------
   // Apoyo interno
   // ---------------------------------------------------------------------------
+
+  /**
+   * Acepta respaldos de la versión actual y anteriores. Las versiones futuras
+   * podrían contener campos que esta app no sabe leer.
+   */
+  private esVersionDeRespaldoValida(version: number): boolean {
+    return (
+      Number.isInteger(version) &&
+      version >= 1 &&
+      version <= CONFIG_APP.versionBaseDatos
+    );
+  }
 
   private validarContrasena(contrasena: string): void {
     if (!contrasena || contrasena.length < CONFIG_APP.longitudMinimaContrasena) {
@@ -1001,6 +1182,109 @@ export class LocalFinanzasService implements FinanzasService {
 
   private limpiarFallos(clave: string): void {
     this.intentosFallidos.delete(clave);
+  }
+
+  /**
+   * Genera las transacciones vencidas de una regla o de todas las activas.
+   *
+   * El avance de `proximaFecha` y las inserciones ocurren dentro de la misma
+   * transacción Dexie, por lo que procesar dos veces no duplica movimientos.
+   * Nunca se generan fechas posteriores a hoy: los saldos no se alteran con
+   * ocurrencias futuras.
+   */
+  private async procesarRecurrenciasDe(
+    usuarioId: string,
+    soloId?: string,
+  ): Promise<number> {
+    const hoy = fechaHoy();
+    let generadas = 0;
+
+    await this.db.transaction(
+      'rw',
+      [
+        this.db.recurrencias,
+        this.db.transacciones,
+        this.db.cuentas,
+        this.db.categorias,
+      ],
+      async () => {
+        let registros: DatosRecurrencia[];
+
+        if (soloId) {
+          const registro = await this.db.recurrencias.get(soloId);
+          registros =
+            registro && registro.usuarioId === usuarioId ? [registro] : [];
+        } else {
+          registros = await this.db.recurrencias
+            .where('usuarioId')
+            .equals(usuarioId)
+            .toArray();
+        }
+
+        const [cuentas, categorias] = await Promise.all([
+          this.db.cuentas.where('usuarioId').equals(usuarioId).toArray(),
+          this.db.categorias.where('usuarioId').equals(usuarioId).toArray(),
+        ]);
+        const cuentasPorId = new Map(cuentas.map((cuenta) => [cuenta.id, cuenta]));
+        const categoriasPorId = new Map(
+          categorias.map((categoria) => [categoria.id, categoria]),
+        );
+
+        for (const registro of registros) {
+          if (!registro.activa) continue;
+
+          const cuenta = cuentasPorId.get(registro.cuentaId);
+          const categoria = categoriasPorId.get(registro.categoriaId);
+          if (
+            !cuenta ||
+            !cuenta.activa ||
+            !categoria ||
+            categoria.tipo !== registro.tipo
+          ) {
+            // Referencias inválidas: se conserva la regla sin avanzar para que
+            // el usuario pueda corregirla cuando la interfaz lo permita.
+            continue;
+          }
+
+          const recurrencia = Recurrencia.desdeJSON(registro);
+          const plan = planificarOcurrencias(recurrencia.toJSON(), hoy);
+          const finalizada = Boolean(
+            recurrencia.fechaFin && plan.proximaFecha > recurrencia.fechaFin,
+          );
+
+          for (const fecha of plan.fechas) {
+            const transaccion = Transaccion.crear(
+              {
+                monto: recurrencia.monto,
+                tipo: recurrencia.tipo,
+                fecha,
+                descripcion: recurrencia.descripcion,
+                categoriaId: recurrencia.categoriaId,
+                cuentaId: recurrencia.cuentaId,
+                metodoPago: recurrencia.metodoPago,
+                estado: EstadoTransaccion.Confirmado,
+                etiquetas: recurrencia.etiquetas,
+              },
+              usuarioId,
+              { id: recurrencia.id, fecha },
+            );
+
+            await this.db.transacciones.add(transaccion.toJSON());
+            generadas += 1;
+          }
+
+          if (plan.fechas.length > 0 || finalizada) {
+            await this.db.recurrencias.put({
+              ...registro,
+              proximaFecha: plan.proximaFecha,
+              activa: finalizada ? false : registro.activa,
+            });
+          }
+        }
+      },
+    );
+
+    return generadas;
   }
 
   private async validarReferencias(

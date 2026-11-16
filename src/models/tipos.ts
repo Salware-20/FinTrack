@@ -7,6 +7,7 @@
  * (útiles para llenar selects y validar formularios).
  */
 
+import type { Recurrencia } from './Recurrencia';
 import type { Usuario } from './Usuario';
 
 export const TipoTransaccion = {
@@ -69,6 +70,22 @@ export const ESTADOS_TRANSACCION: readonly EstadoTransaccion[] = [
   EstadoTransaccion.Pendiente,
 ];
 
+export const FrecuenciaRecurrencia = {
+  Diaria: 'diaria',
+  Semanal: 'semanal',
+  Mensual: 'mensual',
+} as const;
+
+export type FrecuenciaRecurrencia =
+  (typeof FrecuenciaRecurrencia)[keyof typeof FrecuenciaRecurrencia];
+
+/** Frecuencias válidas, lista para recorrer en la interfaz. */
+export const FRECUENCIAS_RECURRENCIA: readonly FrecuenciaRecurrencia[] = [
+  FrecuenciaRecurrencia.Diaria,
+  FrecuenciaRecurrencia.Semanal,
+  FrecuenciaRecurrencia.Mensual,
+];
+
 export const OrdenTransacciones = {
   FechaDesc: 'fecha-desc',
   FechaAsc: 'fecha-asc',
@@ -96,6 +113,13 @@ export function esMetodoPago(valor: unknown): valor is MetodoPago {
 /** Verifica en tiempo de ejecución si un valor es un estado de transacción. */
 export function esEstadoTransaccion(valor: unknown): valor is EstadoTransaccion {
   return ESTADOS_TRANSACCION.includes(valor as EstadoTransaccion);
+}
+
+/** Verifica en tiempo de ejecución si un valor es una frecuencia recurrente. */
+export function esFrecuenciaRecurrencia(
+  valor: unknown,
+): valor is FrecuenciaRecurrencia {
+  return FRECUENCIAS_RECURRENCIA.includes(valor as FrecuenciaRecurrencia);
 }
 
 /** Datos para crear una cuenta. */
@@ -179,6 +203,37 @@ export interface NuevaTransaccion {
   /** Si se omite, se usa "confirmado". */
   estado?: EstadoTransaccion;
   etiquetas?: string[];
+}
+
+/** Datos necesarios para crear una regla de movimiento recurrente. */
+export interface NuevaRecurrencia {
+  /** Siempre positivo; el signo lo define `tipo`. */
+  monto: number;
+  tipo: TipoTransaccion;
+  /** Primera fecha de la serie, formato AAAA-MM-DD. */
+  fechaInicio: string;
+  descripcion: string;
+  categoriaId: string;
+  cuentaId: string;
+  frecuencia: FrecuenciaRecurrencia;
+  /** Última fecha permitida; `null` o vacío significa sin fin. */
+  fechaFin?: string | null;
+  /** Si se omite, se usa "otro". */
+  metodoPago?: MetodoPago;
+  etiquetas?: string[];
+}
+
+/** Cambios admitidos en una regla recurrente ya creada. */
+export interface CambiosRecurrencia {
+  activa?: boolean;
+  fechaFin?: string | null;
+}
+
+/** Resultado de crear una regla y generar sus ocurrencias vencidas. */
+export interface ResultadoCreacionRecurrencia {
+  recurrencia: Recurrencia;
+  /** Ocurrencias reales generadas hasta hoy (nunca fechas futuras). */
+  generadas: number;
 }
 
 /** Datos necesarios para crear una categoría. */

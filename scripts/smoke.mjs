@@ -24,6 +24,9 @@ const { LocalFinanzasService } = await servidor.ssrLoadModule(
 const { BaseDatosFinanzas } = await servidor.ssrLoadModule('/src/db/baseDatos.ts');
 const { normalizarError } = await servidor.ssrLoadModule('/src/utils/errores.ts');
 const { ErrorValidacion } = await servidor.ssrLoadModule('/src/models/errores.ts');
+const { siguienteOcurrencia } = await servidor.ssrLoadModule(
+  '/src/utils/recurrencia.ts',
+);
 
 let pruebas = 0;
 function afirmar(condicion, mensaje) {
@@ -179,7 +182,12 @@ try {
   afirmar(csv.includes('Supermercado') && csv.includes('Salario'), 'CSV con los movimientos');
 
   const respaldo = await servicio.exportarRespaldo();
-  afirmar(respaldo.version === 1 && respaldo.transacciones.length === 2, 'respaldo exportado');
+  afirmar(
+    respaldo.version === 2 &&
+      respaldo.transacciones.length === 2 &&
+      respaldo.recurrencias.length === 0,
+    'respaldo exportado con la versión actual',
+  );
 
   console.log('\nAislamiento entre usuarios');
   await servicio.cerrarSesion();
@@ -221,11 +229,175 @@ try {
   afirmar((await servicio.listarCuentas()).length === 1, 'el reset restaura una cuenta');
   afirmar((await servicio.listarTransacciones()).length === 0, 'el reset borra movimientos');
 
+  console.log('\nMovimientos recurrentes');
+  const fechaLocal = (fecha) => {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+  };
+  const sumarDias = (dias) => {
+    const fecha = new Date();
+    fecha.setDate(fecha.getDate() + dias);
+    return fechaLocal(fecha);
+  };
+  const hoy = fechaLocal(new Date());
+  const cuentaB = (await servicio.listarCuentas())[0];
+  const categoriaGastoB = (await servicio.listarCategorias()).find(
+    (categoria) => categoria.tipo === 'gasto',
+  );
+
+  const diaria = await servicio.crearRecurrencia({
+    monto: 3_500,
+    tipo: 'gasto',
+    fechaInicio: sumarDias(-4),
+    descripcion: 'Café diario',
+    categoriaId: categoriaGastoB.id,
+    cuentaId: cuentaB.id,
+    frecuencia: 'diaria',
+  });
+  afirmar(diaria.generadas === 5, 'genera las ocurrencias vencidas de la regla diaria');
+  afirmar((await servicio.listarRecurrencias()).length === 1, 'lista la regla recurrente');
+  const generadasDiarias = (await servicio.listarTransacciones()).filter(
+    (transaccion) => transaccion.recurrenciaId === diaria.recurrencia.id,
+  );
+  afirmar(generadasDiarias.length === 5, 'vincula cada movimiento con su regla');
+  afirmar(
+    generadasDiarias.every((transaccion) => transaccion.estado === 'confirmado'),
+    'las ocurrencias se registran confirmadas',
+  );
+  afirmar((await servicio.procesarRecurrencias()) === 0, 'procesar dos veces no duplica');
+  afirmar(
+    (await servicio.listarTransacciones()).length === 5,
+    'no se crean movimientos adicionales',
+  );
+
+  const futura = await servicio.crearRecurrencia({
+    monto: 42_000,
+    tipo: 'gasto',
+    fechaInicio: sumarDias(1),
+    descripcion: 'Luz del próximo mes',
+    categoriaId: categoriaGastoB.id,
+    cuentaId: cuentaB.id,
+    frecuencia: 'mensual',
+  });
+  afirmar(futura.generadas === 0, 'no genera movimientos futuros');
+  afirmar(
+    futura.recurrencia.proximaFecha === sumarDias(1),
+    'la regla futura queda programada para su fecha',
+  );
+  afirmar(
+    (await servicio.listarTransacciones()).every(
+      (transaccion) => transaccion.fecha <= hoy,
+    ),
+    'ningún movimiento generado tiene fecha futura',
+  );
+
+  const pausada = await servicio.actualizarRecurrencia(diaria.recurrencia.id, {
+    activa: false,
+  });
+  afirmar(pausada.activa === false, 'pausa una regla recurrente');
+  const reanudada = await servicio.actualizarRecurrencia(diaria.recurrencia.id, {
+    activa: true,
+  });
+  afirmar(reanudada.activa === true, 'reanuda una regla recurrente');
+
+  afirmar(
+    siguienteOcurrencia('mensual', '2026-01-31', 31) === '2026-02-28',
+    'mensual recorta al último día de febrero',
+  );
+  afirmar(
+    siguienteOcurrencia('mensual', '2026-02-28', 31) === '2026-03-31',
+    'mensual recupera el día original tras un mes corto',
+  );
+  afirmar(
+    siguienteOcurrencia('diaria', '2026-12-31') === '2027-01-01',
+    'la frecuencia diaria cruza el año',
+  );
+  afirmar(
+    siguienteOcurrencia('semanal', '2026-12-29') === '2027-01-05',
+    'la frecuencia semanal avanza 7 días',
+  );
+
+  const respaldoRecurrente = await servicio.exportarRespaldo();
+  afirmar(
+    respaldoRecurrente.version === 2 &&
+      respaldoRecurrente.recurrencias.length === 2,
+    'el respaldo incluye las reglas recurrentes',
+  );
+
+  await servicio.resetearDatos();
+  afirmar(
+    (await servicio.listarRecurrencias()).length === 0,
+    'el reset borra las reglas recurrentes',
+  );
+
+  await servicio.importarRespaldo(respaldoRecurrente);
+  const reglasImportadas = await servicio.listarRecurrencias();
+  afirmar(reglasImportadas.length === 2, 'importa las reglas del respaldo');
+  afirmar(
+    reglasImportadas.every(
+      (regla) =>
+        !respaldoRecurrente.recurrencias.some(
+          (original) => original.id === regla.id,
+        ),
+    ),
+    'la importación regenera los ids de las reglas',
+  );
+  const transaccionesImportadas = await servicio.listarTransacciones();
+  afirmar(
+    transaccionesImportadas.length === 5 &&
+      transaccionesImportadas.every((transaccion) => transaccion.recurrenciaId),
+    'importa los movimientos y su vínculo con la regla',
+  );
+  afirmar(
+    transaccionesImportadas.every((transaccion) =>
+      reglasImportadas.some((regla) => regla.id === transaccion.recurrenciaId),
+    ),
+    'los vínculos apuntan a las reglas importadas',
+  );
+
+  await servicio.eliminarRecurrencia(reglasImportadas[0].id);
+  afirmar(
+    (await servicio.listarRecurrencias()).length === 1,
+    'elimina una regla recurrente',
+  );
+  afirmar(
+    (await servicio.listarTransacciones()).length === 5,
+    'conserva los movimientos ya generados al eliminar la regla',
+  );
+
+  const conFin = await servicio.crearRecurrencia({
+    monto: 10_000,
+    tipo: 'gasto',
+    fechaInicio: hoy,
+    fechaFin: hoy,
+    descripcion: 'Pago con fecha final',
+    categoriaId: (await servicio.listarCategorias()).find(
+      (categoria) => categoria.tipo === 'gasto',
+    ).id,
+    cuentaId: (await servicio.listarCuentas())[0].id,
+    frecuencia: 'mensual',
+  });
+  afirmar(conFin.generadas === 1, 'genera la ocurrencia dentro de la fecha final');
+  afirmar(
+    conFin.recurrencia.finalizada && !conFin.recurrencia.activa,
+    'finaliza la regla al alcanzar su fecha final',
+  );
+
   console.log('\nContraseñas y recuperación');
   await servicio.cerrarSesion();
   await esperarError(() => servicio.iniciarSesion('ana@example.com', 'incorrecta'), 'rechaza contraseña incorrecta');
   const sesionA = await servicio.iniciarSesion('ANA@example.com', 'claveSegura123');
   afirmar(sesionA.id === registroA.usuario.id, 'el login normaliza el correo');
+  afirmar(
+    (await servicio.listarRecurrencias()).length === 0,
+    'un usuario no ve las reglas recurrentes de otro',
+  );
+  afirmar(
+    (await servicio.procesarRecurrencias()) === 0,
+    'procesar recurrentes no genera movimientos para otros usuarios',
+  );
 
   await servicio.cambiarContrasena('claveSegura123', 'nuevaClave789');
   await servicio.cerrarSesion();

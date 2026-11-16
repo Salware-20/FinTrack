@@ -29,6 +29,10 @@ export interface DatosTransaccion {
   etiquetas: string[];
   /** Fecha y hora de registro en formato ISO 8601. */
   creadoEn: string;
+  /** Regla recurrente que generó el movimiento, si aplica. */
+  recurrenciaId?: string;
+  /** Fecha de la ocurrencia dentro de la serie, si aplica. */
+  recurrenciaFecha?: string;
 }
 
 /**
@@ -57,6 +61,9 @@ export class Transaccion {
   estado: EstadoTransaccionType;
   etiquetas: string[];
   readonly creadoEn: string;
+  /** Vínculo con la regla que generó el movimiento (solo si aplica). */
+  readonly recurrenciaId?: string;
+  readonly recurrenciaFecha?: string;
 
   constructor(datos: DatosTransaccion) {
     if (!datos.id) {
@@ -103,6 +110,8 @@ export class Transaccion {
     this.estado = datos.estado;
     this.etiquetas = normalizarEtiquetas(datos.etiquetas);
     this.creadoEn = datos.creadoEn;
+    this.recurrenciaId = datos.recurrenciaId;
+    this.recurrenciaFecha = datos.recurrenciaFecha;
   }
 
   /** Verdadero si la transacción representa una entrada de dinero. */
@@ -150,6 +159,12 @@ export class Transaccion {
       estado: this.estado,
       etiquetas: [...this.etiquetas],
       creadoEn: this.creadoEn,
+      ...(this.recurrenciaId
+        ? {
+            recurrenciaId: this.recurrenciaId,
+            recurrenciaFecha: this.recurrenciaFecha,
+          }
+        : {}),
     };
   }
 
@@ -167,6 +182,7 @@ export class Transaccion {
       etiquetas?: string[];
     },
     usuarioId: string,
+    recurrencia?: { id: string; fecha: string },
   ): Transaccion {
     return new Transaccion({
       id: `trx-${crypto.randomUUID()}`,
@@ -181,6 +197,8 @@ export class Transaccion {
       estado: datos.estado ?? EstadoTransaccion.Confirmado,
       etiquetas: datos.etiquetas ?? [],
       creadoEn: new Date().toISOString(),
+      recurrenciaId: recurrencia?.id,
+      recurrenciaFecha: recurrencia?.fecha,
     });
   }
 

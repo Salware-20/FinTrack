@@ -37,6 +37,7 @@ export function DemoDatos() {
 
 function ContenidoDemo() {
   const notificaciones = useNotificaciones();
+  const notificarError = notificaciones.error;
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [seccion, setSeccion] = useState<Seccion>('dashboard');
   const [cargandoSesion, setCargandoSesion] = useState(true);
@@ -48,7 +49,19 @@ function ContenidoDemo() {
 
     finanzasService
       .usuarioActual()
-      .then((encontrado) => {
+      .then(async (encontrado) => {
+        if (!activo) return;
+
+        // Genera las ocurrencias recurrentes vencidas antes de montar las
+        // pantallas, para que dashboard y saldos ya las incluyan.
+        if (encontrado) {
+          try {
+            await finanzasService.procesarRecurrencias();
+          } catch (fallo: unknown) {
+            if (activo) notificarError(mensajeDeError(fallo));
+          }
+        }
+
         if (!activo) return;
         setUsuario(encontrado);
         setErrorSesion(null);
@@ -63,7 +76,7 @@ function ContenidoDemo() {
     return () => {
       activo = false;
     };
-  }, [intento]);
+  }, [intento, notificarError]);
 
   const entrar = (nuevo: Usuario) => {
     setUsuario(nuevo);
