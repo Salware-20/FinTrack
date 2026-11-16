@@ -1,0 +1,455 @@
+/* ==========================================================
+   FinTrack · estilos propios
+   Va DESPUÉS de bootstrap.min.css (ver main.tsx) para poder
+   sobrescribir sus variables sin usar !important.
+   ========================================================== */
+
+:root {
+  --ft-fondo: #f1f4f2;
+  --ft-superficie: #ffffff;
+  --ft-tinta: #1c2b30;
+  --ft-tinta-suave: #5a6a6f;
+  --ft-linea: #d8dfdb;
+  --ft-petroleo: #16363c;
+  --ft-petroleo-claro: #214850;
+  --ft-pino: #1f6b55;
+  --ft-pino-oscuro: #17533f;
+  --ft-ingreso: #1f7a55;
+  --ft-gasto: #b3443a;
+  --ft-ambar: #b9791a;
+
+  --bs-body-font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --bs-body-bg: var(--ft-fondo);
+  --bs-body-color: var(--ft-tinta);
+  --bs-border-color: var(--ft-linea);
+  --bs-primary: var(--ft-pino);
+  --bs-primary-rgb: 31, 107, 85;
+  --bs-link-color: var(--ft-pino);
+  --bs-link-hover-color: var(--ft-pino-oscuro);
+  --bs-border-radius: 4px;
+  --bs-border-radius-sm: 3px;
+  --bs-border-radius-lg: 6px;
+}
+
+body {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bootstrap fija el color de los botones con variables propias del botón,
+   por eso hay que cambiarlas aquí y no solo --bs-primary. */
+.btn-primary {
+  --bs-btn-bg: var(--ft-pino);
+  --bs-btn-border-color: var(--ft-pino);
+  --bs-btn-hover-bg: var(--ft-pino-oscuro);
+  --bs-btn-hover-border-color: var(--ft-pino-oscuro);
+  --bs-btn-active-bg: var(--ft-pino-oscuro);
+  --bs-btn-active-border-color: var(--ft-pino-oscuro);
+  --bs-btn-disabled-bg: var(--ft-pino);
+  --bs-btn-disabled-border-color: var(--ft-pino);
+  --bs-btn-focus-shadow-rgb: 31, 107, 85;
+}
+
+.btn-outline-primary {
+  --bs-btn-color: var(--ft-pino);
+  --bs-btn-border-color: var(--ft-pino);
+  --bs-btn-hover-bg: var(--ft-pino);
+  --bs-btn-hover-border-color: var(--ft-pino);
+  --bs-btn-active-bg: var(--ft-pino-oscuro);
+  --bs-btn-active-border-color: var(--ft-pino-oscuro);
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--ft-pino);
+  box-shadow: 0 0 0 0.2rem rgba(31, 107, 85, 0.2);
+}
+
+/* ---------- Estructura general ---------- */
+
+.ft-app {
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr);
+  min-height: 100vh;
+}
+
+.ft-barra {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem 1rem;
+  background: var(--ft-petroleo);
+  color: #d5e2e0;
+}
+
+.ft-marca {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.5rem 1.5rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.ft-marca i {
+  font-size: 1.4rem;
+  color: #7fd1b0;
+}
+
+.ft-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.ft-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.55rem 0.75rem;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 0 4px 4px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ft-nav-item:hover {
+  background: var(--ft-petroleo-claro);
+  color: #fff;
+}
+
+.ft-nav-item.activo {
+  background: var(--ft-petroleo-claro);
+  border-left-color: #7fd1b0;
+  color: #fff;
+  font-weight: 500;
+}
+
+.ft-nav-item:focus-visible {
+  outline: 2px solid #7fd1b0;
+  outline-offset: 2px;
+}
+
+.ft-usuario {
+  margin-top: auto;
+  padding: 1rem 0.5rem 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 0.9rem;
+}
+
+.ft-usuario strong {
+  display: block;
+  color: #fff;
+  font-weight: 500;
+}
+
+.ft-usuario span {
+  display: block;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #9fb5b3;
+  font-size: 0.8rem;
+}
+
+.ft-salir {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #cfe3df;
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.ft-salir:hover {
+  color: #fff;
+}
+
+.ft-contenido {
+  padding: 2rem clamp(1rem, 3vw, 2.75rem) 3rem;
+  max-width: 78rem;
+}
+
+.ft-titulo {
+  font-size: 1.6rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.ft-subtitulo {
+  margin: 0.2rem 0 0;
+  color: var(--ft-tinta-suave);
+}
+
+.ft-seccion-titulo {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+/* ---------- Montos ---------- */
+
+.ft-monto {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.ft-monto.ingreso {
+  color: var(--ft-ingreso);
+}
+
+.ft-monto.gasto {
+  color: var(--ft-gasto);
+}
+
+/* ---------- Balance en formato de libro contable ---------- */
+
+.ft-libro {
+  margin: 0;
+}
+
+.ft-libro-linea {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid var(--ft-linea);
+}
+
+.ft-libro-linea dt {
+  font-weight: 400;
+  color: var(--ft-tinta-suave);
+}
+
+.ft-libro-linea dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 500;
+}
+
+/* La línea doble imita el cierre de una columna de sumas */
+.ft-libro-total {
+  margin-top: 0.35rem;
+  padding-top: 0.75rem;
+  border-top: 3px double var(--ft-tinta);
+  border-bottom: 0;
+}
+
+.ft-libro-total dt {
+  color: var(--ft-tinta);
+  font-weight: 600;
+}
+
+.ft-libro-total dd {
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Tablas y listas ---------- */
+
+.ft-tabla {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ft-tabla th {
+  padding: 0.5rem 0.75rem 0.5rem 0;
+  border-bottom: 2px solid var(--ft-tinta);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ft-tinta-suave);
+  text-align: left;
+}
+
+.ft-tabla td {
+  padding: 0.7rem 0.75rem 0.7rem 0;
+  border-bottom: 1px solid var(--ft-linea);
+  vertical-align: middle;
+}
+
+.ft-tabla .derecha {
+  text-align: right;
+  padding-right: 0;
+}
+
+.ft-tabla small {
+  display: block;
+  color: var(--ft-tinta-suave);
+}
+
+.ft-tipo-icono {
+  display: inline-grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  margin-right: 0.6rem;
+  border-radius: 50%;
+  font-size: 0.95rem;
+}
+
+.ft-tipo-icono.ingreso {
+  background: #dcefe6;
+  color: var(--ft-ingreso);
+}
+
+.ft-tipo-icono.gasto {
+  background: #f5dedb;
+  color: var(--ft-gasto);
+}
+
+.ft-lista-cuentas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ft-lista-cuentas li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--ft-linea);
+}
+
+.ft-lista-cuentas i {
+  margin-right: 0.5rem;
+  color: var(--ft-pino);
+}
+
+.ft-vacio {
+  padding: 1.25rem 0;
+  color: var(--ft-tinta-suave);
+}
+
+/* ---------- Pantalla de acceso ---------- */
+
+.ft-acceso {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  min-height: 100vh;
+}
+
+.ft-acceso-lado {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 2.5rem;
+  background: var(--ft-petroleo);
+  color: #d5e2e0;
+}
+
+.ft-acceso-lado h1 {
+  max-width: 16ch;
+  margin: 0;
+  color: #fff;
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.ft-acceso-lado p {
+  max-width: 34ch;
+  margin: 1rem 0 0;
+}
+
+.ft-acceso-formulario {
+  align-self: center;
+  width: min(100%, 26rem);
+  margin: 0 auto;
+  padding: 2rem 1.25rem;
+}
+
+.ft-codigo {
+  padding: 0.9rem 1rem;
+  border: 1px dashed var(--ft-tinta-suave);
+  border-radius: 4px;
+  background: var(--ft-superficie);
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-align: center;
+  user-select: all;
+}
+
+/* ---------- Pantallas pequeñas ---------- */
+
+@media (max-width: 991.98px) {
+  .ft-app {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ft-barra {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    overflow-x: auto;
+  }
+
+  .ft-marca {
+    padding: 0;
+  }
+
+  .ft-nav {
+    flex-direction: row;
+    flex: 1;
+  }
+
+  .ft-nav-item {
+    width: auto;
+    border-left: 0;
+    border-bottom: 3px solid transparent;
+    border-radius: 4px 4px 0 0;
+    white-space: nowrap;
+  }
+
+  .ft-nav-item.activo {
+    border-bottom-color: #7fd1b0;
+  }
+
+  .ft-usuario {
+    margin: 0;
+    padding: 0 0 0 1rem;
+    border-top: 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.14);
+    white-space: nowrap;
+  }
+
+  .ft-usuario span {
+    display: none;
+  }
+
+  .ft-acceso {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ft-acceso-lado {
+    gap: 2rem;
+    padding: 1.5rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}
