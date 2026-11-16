@@ -5,6 +5,8 @@
  *   import { TipoTransaccion } from '../models';
  */
 export { Categoria } from './Categoria';
+export { Presupuesto } from './Presupuesto';
+export type { DatosPresupuesto } from './Presupuesto';
 export type { DatosCategoria } from './Categoria';
 export { Cuenta } from './Cuenta';
 export type { DatosCuenta } from './Cuenta';

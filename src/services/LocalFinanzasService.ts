@@ -1,4 +1,4 @@
-import { CONFIG_APP } from '../config/app';
+﻿﻿import { CONFIG_APP } from '../config/app';
 import { baseDatos, BaseDatosFinanzas } from '../db/baseDatos';
 import type { RegistroConfiguracion, RegistroUsuario } from '../db/baseDatos';
 import {
@@ -7,6 +7,8 @@ import {
   crearCuentaInicial,
 } from '../db/semilla';
 import { Categoria } from '../models/Categoria';
+import { Presupuesto } from '../models/Presupuesto';
+import type { DatosPresupuesto } from '../models/Presupuesto';
 import { Cuenta } from '../models/Cuenta';
 import { ErrorValidacion } from '../models/errores';
 import { Recurrencia } from '../models/Recurrencia';
@@ -16,13 +18,17 @@ import type { DatosTransaccion } from '../models/Transaccion';
 import { Transferencia } from '../models/Transferencia';
 import { Usuario } from '../models/Usuario';
 import {
+  EstadoAlertaPresupuesto,
   EstadoTransaccion,
   OrdenTransacciones,
   TipoTransaccion,
 } from '../models/tipos';
 import type {
+  AlertaConcentracionGasto,
+  CambiosPresupuesto,
   CambiosRecurrencia,
   ConfiguracionUsuario,
+  EstadoPresupuesto,
   EstadoResultados,
   FiltroTransacciones,
   NuevaCategoria,
@@ -30,6 +36,7 @@ import type {
   NuevaRecurrencia,
   NuevaTransaccion,
   NuevaTransferencia,
+  NuevoPresupuesto,
   NuevoUsuario,
   ResumenFinanciero,
   ResumenMensual,
@@ -79,10 +86,10 @@ function escaparCsv(valor: string | number): string {
 }
 
 /**
- * Implementación local-first sobre IndexedDB.
+ * ImplementaciÃ³n local-first sobre IndexedDB.
  *
- * - Todo dato financiero lleva `usuarioId` y se filtra por la sesión activa.
- * - La sesión guarda solo el id del usuario en `sessionStorage`.
+ * - Todo dato financiero lleva `usuarioId` y se filtra por la sesiÃ³n activa.
+ * - La sesiÃ³n guarda solo el id del usuario en `sessionStorage`.
  * - Los saldos nunca se almacenan: se calculan con movimientos confirmados.
  * - Las credenciales se guardan como hash PBKDF2 con sal individual.
  */
@@ -96,7 +103,7 @@ export class LocalFinanzasService implements FinanzasService {
   }
 
   // ---------------------------------------------------------------------------
-  // Sesión y cuenta
+  // SesiÃ³n y cuenta
   // ---------------------------------------------------------------------------
 
   async registrar(datos: NuevoUsuario): Promise<ResultadoRegistro> {
@@ -108,7 +115,7 @@ export class LocalFinanzasService implements FinanzasService {
       throw new ErrorValidacion('El nombre es obligatorio.', 'nombre');
     }
     if (!PATRON_CORREO.test(correo)) {
-      throw new ErrorValidacion('El correo no es válido.', 'correo');
+      throw new ErrorValidacion('El correo no es vÃ¡lido.', 'correo');
     }
     this.validarContrasena(contrasena);
 
@@ -171,7 +178,7 @@ export class LocalFinanzasService implements FinanzasService {
 
     if (!registro || !esValida) {
       this.registrarFallo(claveIntentos);
-      throw new ErrorValidacion('Correo o contraseña incorrectos.', 'contrasena');
+      throw new ErrorValidacion('Correo o contraseÃ±a incorrectos.', 'contrasena');
     }
 
     this.limpiarFallos(claveIntentos);
@@ -205,7 +212,7 @@ export class LocalFinanzasService implements FinanzasService {
     const sesion = await this.requerirSesion();
     const esValida = await verificarHash(actual, sesion.sal, sesion.hashContrasena);
     if (!esValida) {
-      throw new ErrorValidacion('La contraseña actual no es correcta.', 'actual');
+      throw new ErrorValidacion('La contraseÃ±a actual no es correcta.', 'actual');
     }
 
     this.validarContrasena(nueva);
@@ -241,7 +248,7 @@ export class LocalFinanzasService implements FinanzasService {
     if (!registro || !esValido) {
       this.registrarFallo(claveIntentos);
       throw new ErrorValidacion(
-        'El correo o el código de recuperación no son válidos.',
+        'El correo o el cÃ³digo de recuperaciÃ³n no son vÃ¡lidos.',
         'codigo',
       );
     }
@@ -278,7 +285,7 @@ export class LocalFinanzasService implements FinanzasService {
       sesion.hashContrasena,
     );
     if (!esValida) {
-      throw new ErrorValidacion('La contraseña no es correcta.', 'contrasena');
+      throw new ErrorValidacion('La contraseÃ±a no es correcta.', 'contrasena');
     }
 
     await this.db.transaction(
@@ -290,12 +297,14 @@ export class LocalFinanzasService implements FinanzasService {
         this.db.transacciones,
         this.db.transferencias,
         this.db.recurrencias,
+        this.db.presupuestos,
         this.db.configuracion,
       ],
       async () => {
         await this.db.transacciones.where('usuarioId').equals(sesion.id).delete();
         await this.db.transferencias.where('usuarioId').equals(sesion.id).delete();
         await this.db.recurrencias.where('usuarioId').equals(sesion.id).delete();
+        await this.db.presupuestos.where('usuarioId').equals(sesion.id).delete();
         await this.db.cuentas.where('usuarioId').equals(sesion.id).delete();
         await this.db.categorias.where('usuarioId').equals(sesion.id).delete();
         await this.db.configuracion.delete(sesion.id);
@@ -309,6 +318,16 @@ export class LocalFinanzasService implements FinanzasService {
   async obtenerConfiguracion(): Promise<ConfiguracionUsuario> {
     const sesion = await this.requerirSesion();
     return this.configuracionDe(sesion.id);
+  }
+
+  async actualizarConfiguracion(
+    cambios: Partial<ConfiguracionUsuario>,
+  ): Promise<ConfiguracionUsuario> {
+    const sesion = await this.requerirSesion();
+    const actual = await this.configuracionDe(sesion.id);
+    const actualizada: ConfiguracionUsuario = { ...actual, ...cambios, usuarioId: sesion.id };
+    await this.db.configuracion.put(actualizada);
+    return actualizada;
   }
 
   // ---------------------------------------------------------------------------
@@ -401,7 +420,7 @@ export class LocalFinanzasService implements FinanzasService {
     await this.db.cuentas.put(actualizada.toJSON());
 
     // Una cuenta archivada no admite movimientos nuevos: sus reglas se pausan
-    // para no acumular ocurrencias que luego no podrían aplicarse.
+    // para no acumular ocurrencias que luego no podrÃ­an aplicarse.
     if (!actualizada.activa) {
       await this.db.recurrencias
         .where('usuarioId')
@@ -483,7 +502,7 @@ export class LocalFinanzasService implements FinanzasService {
   }
 
   // ---------------------------------------------------------------------------
-  // Categorías
+  // CategorÃ­as
   // ---------------------------------------------------------------------------
 
   async listarCategorias(tipo?: TipoTransaccionType): Promise<Categoria[]> {
@@ -507,18 +526,18 @@ export class LocalFinanzasService implements FinanzasService {
     const nombre = datos.nombre ? datos.nombre.trim() : '';
 
     if (!nombre) {
-      throw new ErrorValidacion('El nombre de la categoría es obligatorio.', 'nombre');
+      throw new ErrorValidacion('El nombre de la categorÃ­a es obligatorio.', 'nombre');
     }
 
     let padreId: string | null = null;
     if (datos.padreId) {
       const padre = await this.db.categorias.get(datos.padreId);
       if (!padre || padre.usuarioId !== sesion.id) {
-        throw new ErrorValidacion('La categoría padre no existe.', 'padreId');
+        throw new ErrorValidacion('La categorÃ­a padre no existe.', 'padreId');
       }
       if (padre.tipo !== datos.tipo) {
         throw new ErrorValidacion(
-          'La subcategoría debe ser del mismo tipo que su padre.',
+          'La subcategorÃ­a debe ser del mismo tipo que su padre.',
           'padreId',
         );
       }
@@ -537,7 +556,7 @@ export class LocalFinanzasService implements FinanzasService {
     );
     if (duplicada) {
       throw new ErrorValidacion(
-        `Ya existe una categoría llamada "${nombre}" en ese nivel.`,
+        `Ya existe una categorÃ­a llamada "${nombre}" en ese nivel.`,
         'nombre',
       );
     }
@@ -590,7 +609,7 @@ export class LocalFinanzasService implements FinanzasService {
     const registro = await this.db.transacciones.get(id);
 
     if (!registro || registro.usuarioId !== sesion.id) {
-      throw new ErrorValidacion(`No existe una transacción con id "${id}".`, 'id');
+      throw new ErrorValidacion(`No existe una transacciÃ³n con id "${id}".`, 'id');
     }
 
     const transaccion = Transaccion.desdeJSON(registro);
@@ -609,7 +628,7 @@ export class LocalFinanzasService implements FinanzasService {
     const registro = await this.db.transacciones.get(id);
 
     if (!registro || registro.usuarioId !== sesion.id) {
-      throw new ErrorValidacion(`No existe una transacción con id "${id}".`, 'id');
+      throw new ErrorValidacion(`No existe una transacciÃ³n con id "${id}".`, 'id');
     }
 
     await this.db.transacciones.delete(id);
@@ -702,6 +721,230 @@ export class LocalFinanzasService implements FinanzasService {
     return this.procesarRecurrenciasDe(sesion.id);
   }
 
+  /** Periodo mensual actual en formato AAAA-MM. */
+  private periodoActual(): string {
+    return fechaHoy().slice(0, 7);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Presupuestos
+  // ---------------------------------------------------------------------------
+
+  async listarPresupuestos(): Promise<Presupuesto[]> {
+    const sesion = await this.requerirSesion();
+    const registros = await this.db.presupuestos
+      .where('usuarioId')
+      .equals(sesion.id)
+      .toArray();
+    return registros.map((registro) => Presupuesto.desdeJSON(registro));
+  }
+
+  async crearPresupuesto(datos: NuevoPresupuesto): Promise<Presupuesto> {
+    const sesion = await this.requerirSesion();
+
+    const categoria = await this.db.categorias.get(datos.categoriaId);
+    if (!categoria || categoria.usuarioId !== sesion.id) {
+      throw new ErrorValidacion('La categoria no existe o no le pertenece.', 'categoriaId');
+    }
+    if (categoria.tipo !== TipoTransaccion.Gasto) {
+      throw new ErrorValidacion(
+        'Solo se pueden crear presupuestos para categorias de tipo gasto.',
+        'categoriaId',
+      );
+    }
+
+    // No se permite duplicado activo para la misma categoria
+    const existente = await this.db.presupuestos
+      .where('usuarioId')
+      .equals(sesion.id)
+      .filter(
+        (presupuesto) =>
+          presupuesto.categoriaId === datos.categoriaId && presupuesto.activo,
+      )
+      .first();
+    if (existente) {
+      throw new ErrorValidacion(
+        'Ya existe un presupuesto activo para esta categoria.',
+        'categoriaId',
+      );
+    }
+
+    const presupuesto = Presupuesto.crear(datos, sesion.id);
+    await this.db.presupuestos.add(presupuesto.toJSON());
+    return presupuesto;
+  }
+
+  async actualizarPresupuesto(
+    id: string,
+    cambios: CambiosPresupuesto,
+  ): Promise<Presupuesto> {
+    const sesion = await this.requerirSesion();
+    const registro = await this.db.presupuestos.get(id);
+
+    if (!registro || registro.usuarioId !== sesion.id) {
+      throw new ErrorValidacion('No existe el presupuesto indicado.', 'id');
+    }
+
+    const presupuesto = Presupuesto.desdeJSON(registro);
+    presupuesto.actualizar(cambios);
+    await this.db.presupuestos.put(presupuesto.toJSON());
+    return presupuesto;
+  }
+
+  async eliminarPresupuesto(id: string): Promise<void> {
+    const sesion = await this.requerirSesion();
+    const registro = await this.db.presupuestos.get(id);
+
+    if (!registro || registro.usuarioId !== sesion.id) {
+      throw new ErrorValidacion('No existe el presupuesto indicado.', 'id');
+    }
+
+    await this.db.presupuestos.delete(id);
+  }
+
+  async obtenerEstadoPresupuestos(periodo?: string): Promise<EstadoPresupuesto[]> {
+    const sesion = await this.requerirSesion();
+    const mes = periodo ?? this.periodoActual();
+
+    const [presupuestos, categorias, transacciones] = await Promise.all([
+      this.db.presupuestos.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.categorias.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.transacciones.where('usuarioId').equals(sesion.id).toArray(),
+    ]);
+
+    const categoriasActivos = presupuestos.filter(
+      (p) => p.activo && (p.periodo === null || p.periodo === mes),
+    );
+
+    // Mapa de categoria -> categoriaRaiz para detectar subcategorias
+    const categoriasPorId = new Map(categorias.map((c) => [c.id, c]));
+
+    // Funcion: dado un categoriaId raiz, devuelve ese id mas todos sus descendientes
+    const descendientes = (raizId: string): Set<string> => {
+      const resultado = new Set<string>();
+      const pila = [raizId];
+      while (pila.length > 0) {
+        const actual = pila.pop() as string;
+        resultado.add(actual);
+        for (const c of categorias) {
+          if (c.padreId === actual && !resultado.has(c.id)) {
+            pila.push(c.id);
+          }
+        }
+      }
+      return resultado;
+    };
+
+    // Gastos confirmados del mes
+    const desdeMes = `${mes}-01`;
+    const hastaMes = `${mes}-31`;
+    const gastosDelMes = transacciones.filter(
+      (t) =>
+        t.tipo === TipoTransaccion.Gasto &&
+        t.estado === EstadoTransaccion.Confirmado &&
+        t.fecha >= desdeMes &&
+        t.fecha <= hastaMes,
+    );
+
+    return categoriasActivos.map((presupuesto) => {
+      const idsAfectos = descendientes(presupuesto.categoriaId);
+      const montoGastado = redondearMonto(
+        gastosDelMes
+          .filter((t) => idsAfectos.has(t.categoriaId))
+          .reduce((suma, t) => suma + t.monto, 0),
+      );
+      const porcentajeConsumido = redondearMonto(
+        presupuesto.montoLimite === 0
+          ? 0
+          : (montoGastado / presupuesto.montoLimite) * 100,
+      );
+      const montoDisponible = redondearMonto(presupuesto.montoLimite - montoGastado);
+      const categoria = categoriasPorId.get(presupuesto.categoriaId);
+
+      let estadoAlerta: EstadoAlertaPresupuesto;
+      if (porcentajeConsumido >= 100) {
+        estadoAlerta = EstadoAlertaPresupuesto.Excedido;
+      } else if (porcentajeConsumido >= presupuesto.alertaPorcentaje) {
+        estadoAlerta = EstadoAlertaPresupuesto.Advertencia;
+      } else {
+        estadoAlerta = EstadoAlertaPresupuesto.Normal;
+      }
+
+      return {
+        presupuestoId: presupuesto.id,
+        categoriaId: presupuesto.categoriaId,
+        categoriaNombre: categoria?.nombre ?? presupuesto.categoriaId,
+        montoLimite: presupuesto.montoLimite,
+        montoGastado,
+        montoDisponible,
+        porcentajeConsumido,
+        estadoAlerta,
+      };
+    });
+  }
+
+  async obtenerAlertasConcentracion(
+    periodo?: string,
+    umbral = 30,
+  ): Promise<AlertaConcentracionGasto[]> {
+    const sesion = await this.requerirSesion();
+    const mes = periodo ?? this.periodoActual();
+
+    const [categorias, transacciones] = await Promise.all([
+      this.db.categorias.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.transacciones.where('usuarioId').equals(sesion.id).toArray(),
+    ]);
+
+    const desdeMes = `${mes}-01`;
+    const hastaMes = `${mes}-31`;
+    const gastosDelMes = transacciones.filter(
+      (t) =>
+        t.tipo === TipoTransaccion.Gasto &&
+        t.estado === EstadoTransaccion.Confirmado &&
+        t.fecha >= desdeMes &&
+        t.fecha <= hastaMes,
+    );
+
+    const totalGastos = redondearMonto(
+      gastosDelMes.reduce((suma, t) => suma + t.monto, 0),
+    );
+    if (totalGastos === 0) return [];
+
+    // Acumular por categoria raiz (si la transaccion es en una subcategoria,
+    // se imputa a la raiz para la alerta de concentracion)
+    const categoriasPorId = new Map(categorias.map((c) => [c.id, c]));
+
+    const raizDe = (categoriaId: string): string => {
+      let cat = categoriasPorId.get(categoriaId);
+      while (cat?.padreId) {
+        cat = categoriasPorId.get(cat.padreId);
+      }
+      return cat?.id ?? categoriaId;
+    };
+
+    const acumuladosPorRaiz = new Map<string, number>();
+    for (const t of gastosDelMes) {
+      const raiz = raizDe(t.categoriaId);
+      acumuladosPorRaiz.set(raiz, (acumuladosPorRaiz.get(raiz) ?? 0) + t.monto);
+    }
+
+    const alertas: AlertaConcentracionGasto[] = [];
+    for (const [categoriaId, montoGastado] of acumuladosPorRaiz.entries()) {
+      const porcentajeDelTotal = redondearMonto((montoGastado / totalGastos) * 100);
+      if (porcentajeDelTotal >= umbral) {
+        const categoria = categoriasPorId.get(categoriaId);
+        alertas.push({
+          categoriaId,
+          categoriaNombre: categoria?.nombre ?? categoriaId,
+          montoGastado: redondearMonto(montoGastado),
+          porcentajeDelTotal,
+          umbral,
+        });
+      }
+    }
+
+    return alertas.sort((a, b) => b.porcentajeDelTotal - a.porcentajeDelTotal);
+  }
   // ---------------------------------------------------------------------------
   // Reportes
   // ---------------------------------------------------------------------------
@@ -787,6 +1030,7 @@ export class LocalFinanzasService implements FinanzasService {
       transacciones,
       transferencias,
       recurrencias,
+      presupuestos,
       configuracion,
     ] = await Promise.all([
       this.db.cuentas.where('usuarioId').equals(sesion.id).toArray(),
@@ -794,6 +1038,7 @@ export class LocalFinanzasService implements FinanzasService {
       this.db.transacciones.where('usuarioId').equals(sesion.id).toArray(),
       this.db.transferencias.where('usuarioId').equals(sesion.id).toArray(),
       this.db.recurrencias.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.presupuestos.where('usuarioId').equals(sesion.id).toArray(),
       this.configuracionDe(sesion.id),
     ]);
 
@@ -806,6 +1051,7 @@ export class LocalFinanzasService implements FinanzasService {
       transacciones,
       transferencias,
       recurrencias,
+      presupuestos,
       configuracion,
     };
   }
@@ -822,19 +1068,23 @@ export class LocalFinanzasService implements FinanzasService {
       !Array.isArray(respaldo.transferencias)
     ) {
       throw new ErrorValidacion(
-        'El archivo de respaldo no es válido o es de otra versión.',
+        'El archivo de respaldo no es vÃ¡lido o es de otra versiÃ³n.',
         'respaldo',
       );
     }
 
     // Los respaldos v1 no incluyen reglas recurrentes: se aceptan igual y se
-    // importan como una lista vacía.
+    // importan como una lista vacÃ­a.
     const recurrenciasRespaldo = Array.isArray(respaldo.recurrencias)
       ? respaldo.recurrencias
       : [];
+    // Los respaldos v1/v2 no incluyen presupuestos: retrocompatibilidad.
+    const presupuestosRespaldo: DatosPresupuesto[] = Array.isArray(respaldo.presupuestos)
+      ? (respaldo.presupuestos as DatosPresupuesto[])
+      : [];
 
     try {
-      // Los respaldos conservan los ids del usuario que los generó. Al importar
+      // Los respaldos conservan los ids del usuario que los generÃ³. Al importar
       // en otra cuenta (que convive en la misma base) hay que regenerarlos y
       // remapear todas las referencias para no chocar con los datos existentes.
       const mapaCuentas = new Map<string, string>();
@@ -852,6 +1102,11 @@ export class LocalFinanzasService implements FinanzasService {
         mapaRecurrencias.set(recurrencia.id, `rec-${crypto.randomUUID()}`);
       }
 
+      const mapaPresupuestos = new Map<string, string>();
+      for (const presupuesto of presupuestosRespaldo) {
+        mapaPresupuestos.set(presupuesto.id, `pre-${crypto.randomUUID()}`);
+      }
+
       const cuentas = respaldo.cuentas.map((cuenta) =>
         Cuenta.desdeJSON({
           ...cuenta,
@@ -866,7 +1121,7 @@ export class LocalFinanzasService implements FinanzasService {
           : null;
         if (categoria.padreId && !padreId) {
           throw new ErrorValidacion(
-            'El respaldo hace referencia a una categoría padre inexistente.',
+            'El respaldo hace referencia a una categorÃ­a padre inexistente.',
             'respaldo',
           );
         }
@@ -888,13 +1143,13 @@ export class LocalFinanzasService implements FinanzasService {
         const categoriaId = mapaCategorias.get(recurrencia.categoriaId);
         if (!cuentaId || !categoriaId) {
           throw new ErrorValidacion(
-            'El respaldo tiene reglas con cuentas o categorías inexistentes.',
+            'El respaldo tiene reglas con cuentas o categorÃ­as inexistentes.',
             'respaldo',
           );
         }
         if (tiposDeCategoria.get(recurrencia.categoriaId) !== recurrencia.tipo) {
           throw new ErrorValidacion(
-            'El respaldo tiene reglas cuya categoría no coincide con el tipo.',
+            'El respaldo tiene reglas cuya categorÃ­a no coincide con el tipo.',
             'respaldo',
           );
         }
@@ -914,13 +1169,13 @@ export class LocalFinanzasService implements FinanzasService {
         const categoriaId = mapaCategorias.get(transaccion.categoriaId);
         if (!cuentaId || !categoriaId) {
           throw new ErrorValidacion(
-            'El respaldo tiene movimientos con cuentas o categorías inexistentes.',
+            'El respaldo tiene movimientos con cuentas o categorÃ­as inexistentes.',
             'respaldo',
           );
         }
         if (tiposDeCategoria.get(transaccion.categoriaId) !== transaccion.tipo) {
           throw new ErrorValidacion(
-            'El respaldo tiene movimientos cuya categoría no coincide con el tipo.',
+            'El respaldo tiene movimientos cuya categorÃ­a no coincide con el tipo.',
             'respaldo',
           );
         }
@@ -961,6 +1216,30 @@ export class LocalFinanzasService implements FinanzasService {
         });
       });
 
+      const presupuestos = presupuestosRespaldo.map((presupuesto) => {
+        const categoriaId = mapaCategorias.get(presupuesto.categoriaId);
+        if (!categoriaId) {
+          throw new ErrorValidacion(
+            'El respaldo tiene presupuestos con categorías inexistentes.',
+            'respaldo',
+          );
+        }
+        if (tiposDeCategoria.get(presupuesto.categoriaId) !== TipoTransaccion.Gasto) {
+          throw new ErrorValidacion(
+            'El respaldo tiene presupuestos para categorías que no son de tipo gasto.',
+            'respaldo',
+          );
+        }
+
+        return Presupuesto.desdeJSON({
+          ...presupuesto,
+          id: mapaPresupuestos.get(presupuesto.id) as string,
+          usuarioId: sesion.id,
+          categoriaId,
+          periodo: presupuesto.periodo ?? null,
+        });
+      });
+
       const configuracion: RegistroConfiguracion = {
         ...respaldo.configuracion,
         usuarioId: sesion.id,
@@ -974,12 +1253,14 @@ export class LocalFinanzasService implements FinanzasService {
           this.db.transacciones,
           this.db.transferencias,
           this.db.recurrencias,
+          this.db.presupuestos,
           this.db.configuracion,
         ],
         async () => {
           await this.db.transacciones.where('usuarioId').equals(sesion.id).delete();
           await this.db.transferencias.where('usuarioId').equals(sesion.id).delete();
           await this.db.recurrencias.where('usuarioId').equals(sesion.id).delete();
+          await this.db.presupuestos.where('usuarioId').equals(sesion.id).delete();
           await this.db.cuentas.where('usuarioId').equals(sesion.id).delete();
           await this.db.categorias.where('usuarioId').equals(sesion.id).delete();
 
@@ -996,13 +1277,16 @@ export class LocalFinanzasService implements FinanzasService {
           await this.db.recurrencias.bulkAdd(
             recurrencias.map((recurrencia) => recurrencia.toJSON()),
           );
+          await this.db.presupuestos.bulkAdd(
+            presupuestos.map((presupuesto) => presupuesto.toJSON()),
+          );
           await this.db.configuracion.put(configuracion);
         },
       );
     } catch (fallo) {
       if (fallo instanceof ErrorValidacion) throw fallo;
       throw new ErrorValidacion(
-        'El archivo de respaldo tiene datos inválidos.',
+        'El archivo de respaldo tiene datos invÃ¡lidos.',
         'respaldo',
       );
     }
@@ -1023,10 +1307,10 @@ export class LocalFinanzasService implements FinanzasService {
     const cabecera = [
       'Fecha',
       'Tipo',
-      'Descripción',
-      'Categoría',
+      'DescripciÃ³n',
+      'CategorÃ­a',
       'Cuenta',
-      'Método de pago',
+      'MÃ©todo de pago',
       'Estado',
       'Monto',
       'Etiquetas',
@@ -1040,7 +1324,7 @@ export class LocalFinanzasService implements FinanzasService {
         transaccion.fecha,
         transaccion.esIngreso ? 'Ingreso' : 'Gasto',
         transaccion.descripcion,
-        categoria ? categoria.nombreCompleto(contexto.categorias) : 'Sin categoría',
+        categoria ? categoria.nombreCompleto(contexto.categorias) : 'Sin categorÃ­a',
         cuenta ? cuenta.nombre : 'Sin cuenta',
         transaccion.metodoPago,
         transaccion.estado,
@@ -1065,12 +1349,14 @@ export class LocalFinanzasService implements FinanzasService {
         this.db.transacciones,
         this.db.transferencias,
         this.db.recurrencias,
+        this.db.presupuestos,
         this.db.configuracion,
       ],
       async () => {
         await this.db.transacciones.where('usuarioId').equals(sesion.id).delete();
         await this.db.transferencias.where('usuarioId').equals(sesion.id).delete();
         await this.db.recurrencias.where('usuarioId').equals(sesion.id).delete();
+        await this.db.presupuestos.where('usuarioId').equals(sesion.id).delete();
         await this.db.cuentas.where('usuarioId').equals(sesion.id).delete();
         await this.db.categorias.where('usuarioId').equals(sesion.id).delete();
         await this.db.configuracion.delete(sesion.id);
@@ -1087,8 +1373,8 @@ export class LocalFinanzasService implements FinanzasService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Acepta respaldos de la versión actual y anteriores. Las versiones futuras
-   * podrían contener campos que esta app no sabe leer.
+   * Acepta respaldos de la versiÃ³n actual y anteriores. Las versiones futuras
+   * podrÃ­an contener campos que esta app no sabe leer.
    */
   private esVersionDeRespaldoValida(version: number): boolean {
     return (
@@ -1101,7 +1387,7 @@ export class LocalFinanzasService implements FinanzasService {
   private validarContrasena(contrasena: string): void {
     if (!contrasena || contrasena.length < CONFIG_APP.longitudMinimaContrasena) {
       throw new ErrorValidacion(
-        `La contraseña debe tener al menos ${CONFIG_APP.longitudMinimaContrasena} caracteres.`,
+        `La contraseÃ±a debe tener al menos ${CONFIG_APP.longitudMinimaContrasena} caracteres.`,
         'contrasena',
       );
     }
@@ -1137,20 +1423,20 @@ export class LocalFinanzasService implements FinanzasService {
     try {
       this.almacenSesion()?.removeItem(CONFIG_APP.claveSesion);
     } catch {
-      // Sin almacenamiento disponible: la sesión en memoria ya se limpió.
+      // Sin almacenamiento disponible: la sesiÃ³n en memoria ya se limpiÃ³.
     }
   }
 
   private async requerirSesion(): Promise<RegistroUsuario> {
     const id = this.leerSesionId();
     if (!id) {
-      throw new ErrorValidacion('Debe iniciar sesión para continuar.', 'sesion');
+      throw new ErrorValidacion('Debe iniciar sesiÃ³n para continuar.', 'sesion');
     }
 
     const registro = await this.db.usuarios.get(id);
     if (!registro) {
       this.limpiarSesion();
-      throw new ErrorValidacion('La sesión expiró. Vuelva a iniciar sesión.', 'sesion');
+      throw new ErrorValidacion('La sesiÃ³n expirÃ³. Vuelva a iniciar sesiÃ³n.', 'sesion');
     }
 
     return registro;
@@ -1188,7 +1474,7 @@ export class LocalFinanzasService implements FinanzasService {
    * Genera las transacciones vencidas de una regla o de todas las activas.
    *
    * El avance de `proximaFecha` y las inserciones ocurren dentro de la misma
-   * transacción Dexie, por lo que procesar dos veces no duplica movimientos.
+   * transacciÃ³n Dexie, por lo que procesar dos veces no duplica movimientos.
    * Nunca se generan fechas posteriores a hoy: los saldos no se alteran con
    * ocurrencias futuras.
    */
@@ -1241,7 +1527,7 @@ export class LocalFinanzasService implements FinanzasService {
             !categoria ||
             categoria.tipo !== registro.tipo
           ) {
-            // Referencias inválidas: se conserva la regla sin avanzar para que
+            // Referencias invÃ¡lidas: se conserva la regla sin avanzar para que
             // el usuario pueda corregirla cuando la interfaz lo permita.
             continue;
           }
@@ -1302,17 +1588,17 @@ export class LocalFinanzasService implements FinanzasService {
       throw new ErrorValidacion('La cuenta no existe o no le pertenece.', 'cuentaId');
     }
     if (!cuenta.activa) {
-      throw new ErrorValidacion('La cuenta está archivada.', 'cuentaId');
+      throw new ErrorValidacion('La cuenta estÃ¡ archivada.', 'cuentaId');
     }
     if (!categoria || categoria.usuarioId !== usuarioId) {
       throw new ErrorValidacion(
-        'La categoría no existe o no le pertenece.',
+        'La categorÃ­a no existe o no le pertenece.',
         'categoriaId',
       );
     }
     if (categoria.tipo !== tipo) {
       throw new ErrorValidacion(
-        `La categoría "${categoria.nombre}" es de tipo ${categoria.tipo} y la transacción es de tipo ${tipo}.`,
+        `La categorÃ­a "${categoria.nombre}" es de tipo ${categoria.tipo} y la transacciÃ³n es de tipo ${tipo}.`,
         'categoriaId',
       );
     }

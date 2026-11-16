@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useState } from 'react';
+﻿import { Fragment, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
-import type { Categoria, Transaccion } from '../../models';
+import { Badge, Button, Card, Col, Form, Modal, Row, Table } from 'react-bootstrap';
+import type { Categoria, Presupuesto, Transaccion } from '../../models';
 import { TipoTransaccion, TIPOS_TRANSACCION } from '../../models';
 import { finanzasService } from '../../services';
 import { formatearMoneda, formatearPorcentaje, formatearTipo } from '../../utils/formato';
@@ -13,14 +13,16 @@ import { mensajeDeError } from '../../utils/errores';
 interface DatosCategorias {
   categorias: Categoria[];
   transacciones: Transaccion[];
+  presupuestos: Presupuesto[];
 }
 
 async function consultarCategorias(): Promise<DatosCategorias> {
-  const [categorias, transacciones] = await Promise.all([
+  const [categorias, transacciones, presupuestos] = await Promise.all([
     finanzasService.listarCategorias(),
     finanzasService.listarTransacciones(),
+    finanzasService.listarPresupuestos(),
   ]);
-  return { categorias, transacciones };
+  return { categorias, transacciones, presupuestos };
 }
 
 interface FormularioCategoria {
@@ -42,10 +44,10 @@ const FORMULARIO_INICIAL: FormularioCategoria = {
 const CAMPOS_CATEGORIA = ['nombre', 'padreId'] as const;
 
 /**
- * Pantalla de categorías de la demo.
+ * Pantalla de categorÃ­as de la demo.
  *
- * Muestra el árbol ingreso/gasto con el uso real de cada categoría y permite
- * crear categorías raíz o subcategorías del mismo tipo.
+ * Muestra el Ã¡rbol ingreso/gasto con el uso real de cada categorÃ­a y permite
+ * crear categorÃ­as raÃ­z o subcategorÃ­as del mismo tipo.
  */
 export function Categorias() {
   const notificaciones = useNotificaciones();
@@ -53,6 +55,11 @@ export function Categorias() {
 
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [transacciones, setTransacciones] = useState<Transaccion[]>([]);
+  const [presupuestos, setPresupuestos] = useState<Presupuesto[]>([]);
+  const [modalPresupuesto, setModalPresupuesto] = useState<{ visible: boolean; categoria?: Categoria; presupuestoExistente?: Presupuesto }>({ visible: false });
+  const [formLimite, setFormLimite] = useState<string>('');
+  const [formAlerta, setFormAlerta] = useState<number>(80);
+  const [errorPresupuesto, setErrorPresupuesto] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
@@ -68,6 +75,7 @@ export function Categorias() {
         if (!activo) return;
         setCategorias(datos.categorias);
         setTransacciones(datos.transacciones);
+        setPresupuestos(datos.presupuestos);
         setCargando(false);
         setErrorCarga(null);
       })
@@ -106,7 +114,7 @@ export function Categorias() {
       setFormulario((previo) => ({ ...previo, nombre: '', icono: '' }));
       setMostrarFormulario(false);
       limpiarTodo();
-      notificaciones.exito('Categoría creada.');
+      notificaciones.exito('CategorÃ­a creada.');
       recargar();
     } catch (fallo) {
       manejar(fallo, CAMPOS_CATEGORIA);
@@ -120,6 +128,59 @@ export function Categorias() {
     setFormulario((previo) => ({ ...previo, tipo, padreId: '' }));
   };
 
+  const abrirModalPresupuesto = (categoria: Categoria) => {
+    const existente = presupuestos.find((p) => p.categoriaId === categoria.id && p.activo);
+    setModalPresupuesto({ visible: true, categoria, presupuestoExistente: existente });
+    setFormLimite(existente ? String(existente.montoLimite) : '');
+    setFormAlerta(existente ? existente.alertaPorcentaje : 80);
+    setErrorPresupuesto(null);
+  };
+
+  const guardarPresupuesto = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!modalPresupuesto.categoria) return;
+
+    const limite = parseFloat(formLimite);
+    if (isNaN(limite) || limite <= 0) {
+      setErrorPresupuesto('El monto limite debe ser un numero mayor que 0.');
+      return;
+    }
+
+    try {
+      if (modalPresupuesto.presupuestoExistente) {
+        await finanzasService.actualizarPresupuesto(modalPresupuesto.presupuestoExistente.id, {
+          montoLimite: limite,
+          alertaPorcentaje: formAlerta,
+        });
+        notificaciones.exito('Presupuesto actualizado.');
+      } else {
+        await finanzasService.crearPresupuesto({
+          categoriaId: modalPresupuesto.categoria.id,
+          montoLimite: limite,
+          alertaPorcentaje: formAlerta,
+        });
+        notificaciones.exito('Presupuesto fijado.');
+      }
+      setModalPresupuesto({ visible: false });
+      recargar();
+    } catch (fallo) {
+      setErrorPresupuesto(mensajeDeError(fallo));
+    }
+  };
+
+  const eliminarPresupuestoActual = async () => {
+    if (!modalPresupuesto.presupuestoExistente) return;
+    if (!window.confirm('¿Desea eliminar el limite de presupuesto para esta categoria?')) return;
+
+    try {
+      await finanzasService.eliminarPresupuesto(modalPresupuesto.presupuestoExistente.id);
+      notificaciones.exito('Presupuesto eliminado.');
+      setModalPresupuesto({ visible: false });
+      recargar();
+    } catch (fallo) {
+      notificaciones.error(mensajeDeError(fallo));
+    }
+  };
   const raices = (tipo: TipoTransaccion) =>
     categorias.filter((categoria) => categoria.tipo === tipo && !categoria.padreId);
 
@@ -146,7 +207,7 @@ export function Categorias() {
     [TipoTransaccion.Gasto]: totalPorTipo(TipoTransaccion.Gasto),
   };
 
-  if (cargando) return <Cargando texto="Cargando categorías…" />;
+  if (cargando) return <Cargando texto="Cargando categorÃ­asâ€¦" />;
 
   const padresDisponibles = raices(formulario.tipo);
 
@@ -154,16 +215,16 @@ export function Categorias() {
     <>
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
-          <h1 className="h4 mb-1">Categorías</h1>
+          <h1 className="h4 mb-1">CategorÃ­as</h1>
           <p className="text-muted mb-0">
-            Clasificación jerárquica de ingresos y gastos, pensada para Costa Rica.
+            ClasificaciÃ³n jerÃ¡rquica de ingresos y gastos, pensada para Costa Rica.
           </p>
         </div>
         <Button onClick={() => {
           limpiarTodo();
           setMostrarFormulario((visible) => !visible);
         }}>
-          {mostrarFormulario ? 'Cerrar formulario' : '+ Nueva categoría'}
+          {mostrarFormulario ? 'Cerrar formulario' : '+ Nueva categorÃ­a'}
         </Button>
       </div>
 
@@ -172,7 +233,7 @@ export function Categorias() {
       {mostrarFormulario && (
         <Card className="mb-4">
           <Card.Body>
-            <Card.Title className="h5 mb-3">Nueva categoría</Card.Title>
+            <Card.Title className="h5 mb-3">Nueva categorÃ­a</Card.Title>
             <Form onSubmit={crear} noValidate>
               <Row className="g-3">
                 <Col xs={12} md={4}>
@@ -215,7 +276,7 @@ export function Categorias() {
                 </Col>
                 <Col xs={6} md={4}>
                   <Form.Group controlId="cat-padre">
-                    <Form.Label>Categoría padre (opcional)</Form.Label>
+                    <Form.Label>CategorÃ­a padre (opcional)</Form.Label>
                     <Form.Select
                       value={formulario.padreId}
                       isInvalid={Boolean(errores.padreId)}
@@ -227,7 +288,7 @@ export function Categorias() {
                         limpiar('padreId');
                       }}
                     >
-                      <option value="">Sin padre (categoría raíz)</option>
+                      <option value="">Sin padre (categorÃ­a raÃ­z)</option>
                       {padresDisponibles.map((categoria) => (
                         <option key={categoria.id} value={categoria.id}>
                           {categoria.icono} {categoria.nombre}
@@ -257,10 +318,10 @@ export function Categorias() {
                 </Col>
                 <Col xs={6} md={1}>
                   <Form.Group controlId="cat-icono">
-                    <Form.Label>Ícono</Form.Label>
+                    <Form.Label>Ãcono</Form.Label>
                     <Form.Control
                       value={formulario.icono}
-                      placeholder="🏷️"
+                      placeholder="ðŸ·ï¸"
                       maxLength={4}
                       onChange={(evento) =>
                         setFormulario((previo) => ({
@@ -275,7 +336,7 @@ export function Categorias() {
 
               <div className="d-flex gap-2 mt-3">
                 <Button type="submit" disabled={guardando}>
-                  {guardando ? 'Guardando…' : 'Crear categoría'}
+                  {guardando ? 'Guardandoâ€¦' : 'Crear categorÃ­a'}
                 </Button>
                 <Button
                   type="button"
@@ -301,23 +362,24 @@ export function Categorias() {
                 {tipo === TipoTransaccion.Ingreso ? 'Ingresos' : 'Gastos'}
               </Card.Title>
               <Badge bg={tipo === TipoTransaccion.Ingreso ? 'success' : 'danger'}>
-                Total histórico: {formatearMoneda(totales[tipo])}
+                Total histÃ³rico: {formatearMoneda(totales[tipo])}
               </Badge>
             </div>
 
             {raices(tipo).length === 0 ? (
               <p className="text-muted mb-0">
-                No hay categorías de {formatearTipo(tipo).toLowerCase()}.
+                No hay categorÃ­as de {formatearTipo(tipo).toLowerCase()}.
               </p>
             ) : (
               <div className="table-responsive">
                 <Table hover size="sm" className="align-middle mb-0">
                   <thead>
                     <tr>
-                      <th>Categoría</th>
+                      <th>CategorÃ­a</th>
                       <th className="text-end">Movimientos</th>
                       <th className="text-end">Total</th>
                       <th className="text-end">% del tipo</th>
+                      {tipo === TipoTransaccion.Gasto && <th className="text-end">Presupuesto</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -346,10 +408,36 @@ export function Categorias() {
                             </td>
                             <td className="text-end text-muted text-nowrap">
                               {totales[tipo] === 0
-                                ? '—'
+                                ? 'â€”'
                                 : formatearPorcentaje(
                                     (usoPadre.total / totales[tipo]) * 100,
                                   )}
+                            {tipo === TipoTransaccion.Gasto && (
+                              <td className="text-end text-nowrap">
+                                {(() => {
+                                  const pres = presupuestos.find((p) => p.categoriaId === padre.id && p.activo);
+                                  return (
+                                    <div className="d-inline-flex align-items-center gap-1">
+                                      {pres ? (
+                                        <Badge bg="info" text="dark" className="me-1">
+                                          {formatearMoneda(pres.montoLimite)}
+                                        </Badge>
+                                      ) : (
+                                        <span className="text-muted small me-1">Sin límite</span>
+                                      )}
+                                      <Button
+                                        size="sm"
+                                        variant="outline-secondary"
+                                        style={{ fontSize: '0.75rem', padding: '0.1rem 0.4rem' }}
+                                        onClick={() => abrirModalPresupuesto(padre)}
+                                      >
+                                        {pres ? 'Editar' : 'Fijar'}
+                                      </Button>
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                            )}
                             </td>
                           </tr>
                           {hijos.map((hijo) => {
@@ -357,7 +445,7 @@ export function Categorias() {
                             return (
                               <tr key={hijo.id}>
                                 <td className="ps-4 text-muted">
-                                  ↳ {hijo.icono} {hijo.nombre}
+                                  â†³ {hijo.icono} {hijo.nombre}
                                 </td>
                                 <td className="text-end">{usoHijo.cantidad}</td>
                                 <td className="text-end text-nowrap">
@@ -365,10 +453,36 @@ export function Categorias() {
                                 </td>
                                 <td className="text-end text-muted text-nowrap">
                                   {totales[tipo] === 0
-                                    ? '—'
+                                    ? 'â€”'
                                     : formatearPorcentaje(
                                         (usoHijo.total / totales[tipo]) * 100,
                                       )}
+                                {tipo === TipoTransaccion.Gasto && (
+                                  <td className="text-end text-nowrap">
+                                    {(() => {
+                                      const pres = presupuestos.find((p) => p.categoriaId === hijo.id && p.activo);
+                                      return (
+                                        <div className="d-inline-flex align-items-center gap-1">
+                                          {pres ? (
+                                            <Badge bg="info" text="dark" className="me-1">
+                                              {formatearMoneda(pres.montoLimite)}
+                                            </Badge>
+                                          ) : (
+                                            <span className="text-muted small me-1">Sin límite</span>
+                                          )}
+                                          <Button
+                                            size="sm"
+                                            variant="outline-secondary"
+                                            style={{ fontSize: '0.75rem', padding: '0.1rem 0.4rem' }}
+                                            onClick={() => abrirModalPresupuesto(hijo)}
+                                          >
+                                            {pres ? 'Editar' : 'Fijar'}
+                                          </Button>
+                                        </div>
+                                      );
+                                    })()}
+                                  </td>
+                                )}
                                 </td>
                               </tr>
                             );
@@ -385,9 +499,73 @@ export function Categorias() {
       ))}
 
       <p className="text-muted small mb-0">
-        Las subcategorías heredan el tipo de su padre. Los totales se calculan con todos
+        Las subcategorÃ­as heredan el tipo de su padre. Los totales se calculan con todos
         los movimientos registrados, incluidos los pendientes.
       </p>
+      {/* Modal para configurar o editar presupuesto */}
+      <Modal
+        show={modalPresupuesto.visible}
+        onHide={() => setModalPresupuesto({ visible: false })}
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title className="h5">
+            {modalPresupuesto.presupuestoExistente ? 'Editar presupuesto' : 'Fijar presupuesto mensual'}
+          </Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={guardarPresupuesto}>
+          <Modal.Body>
+            <p className="text-muted mb-3">
+              Categoria: <strong>{modalPresupuesto.categoria?.icono} {modalPresupuesto.categoria?.nombre}</strong>
+            </p>
+            {errorPresupuesto && (
+              <div className="alert alert-danger py-2 small">{errorPresupuesto}</div>
+            )}
+            <Form.Group className="mb-3" controlId="presupuesto-monto">
+              <Form.Label>Monto limite mensual</Form.Label>
+              <Form.Control
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                placeholder="Ejemplo: 150000"
+                value={formLimite}
+                onChange={(e) => setFormLimite(e.target.value)}
+              />
+              <Form.Text className="text-muted">
+                Suma los gastos de esta categoria y todas sus subcategorias.
+              </Form.Text>
+            </Form.Group>
+            <Form.Group className="mb-3" controlId="presupuesto-alerta">
+              <Form.Label>Porcentaje de advertencia ({formAlerta} %)</Form.Label>
+              <Form.Range
+                min={1}
+                max={100}
+                value={formAlerta}
+                onChange={(e) => setFormAlerta(parseInt(e.target.value, 10))}
+              />
+              <Form.Text className="text-muted">
+                Emite una advertencia al consumir el {formAlerta} % del limite.
+              </Form.Text>
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer className="d-flex justify-content-between">
+            {modalPresupuesto.presupuestoExistente ? (
+              <Button variant="outline-danger" size="sm" onClick={eliminarPresupuestoActual}>
+                Eliminar presupuesto
+              </Button>
+            ) : <div />}
+            <div className="d-flex gap-2">
+              <Button variant="secondary" onClick={() => setModalPresupuesto({ visible: false })}>
+                Cancelar
+              </Button>
+              <Button type="submit" variant="primary">
+                Guardar
+              </Button>
+            </div>
+          </Modal.Footer>
+        </Form>
+      </Modal>
     </>
   );
 }
