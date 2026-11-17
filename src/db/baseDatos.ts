@@ -1,4 +1,4 @@
-﻿import Dexie from 'dexie';
+import Dexie from 'dexie';
 import type { Table } from 'dexie';
 import { CONFIG_APP } from '../config/app';
 import type { DatosCategoria } from '../models/Categoria';
@@ -35,7 +35,7 @@ export type RegistroPresupuesto = DatosPresupuesto;
 export type RegistroRecurrencia = DatosRecurrencia;
 export type RegistroConfiguracion = ConfiguracionUsuario;
 
-/** Base de datos local (IndexedDB) de la aplicaciÃ³n. */
+/** Base de datos local (IndexedDB) de la aplicación. */
 export class BaseDatosFinanzas extends Dexie {
   usuarios!: Table<RegistroUsuario, string>;
   cuentas!: Table<RegistroCuenta, string>;
@@ -59,7 +59,7 @@ export class BaseDatosFinanzas extends Dexie {
       configuracion: 'usuarioId',
     });
 
-    // v2: reglas de movimientos recurrentes y vÃ­nculo desde cada transacciÃ³n
+    // v2: reglas de movimientos recurrentes y vínculo desde cada transacción
     // generada. Dexie migra la base existente sin perder datos.
     this.version(2).stores({
       usuarios: 'id, &correo',
@@ -88,7 +88,7 @@ export class BaseDatosFinanzas extends Dexie {
 }
 
 /**
- * Instancia compartida por la aplicaciÃ³n.
+ * Instancia compartida por la aplicación.
  * Dexie abre la base de forma perezosa en la primera consulta.
  */
 export const baseDatos = new BaseDatosFinanzas();

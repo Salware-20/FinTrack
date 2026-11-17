@@ -1,30 +1,30 @@
-﻿/**
- * ConfiguraciÃ³n general de la aplicaciÃ³n.
+/**
+ * Configuración general de la aplicación.
  *
- * La aplicaciÃ³n es local-first: no depende de internet ni de un servidor.
- * Todo lo ajustable (moneda, base de datos, sesiÃ³n) vive aquÃ­.
+ * La aplicación es local-first: no depende de internet ni de un servidor.
+ * Todo lo ajustable (moneda, base de datos, sesión) vive aquí.
  */
 export const CONFIG_APP = {
   nombre: 'FinTrack',
   descripcion: 'Gestor de finanzas personales local',
-  /** Moneda por defecto (colÃ³n costarricense). */
+  /** Moneda por defecto (colón costarricense). */
   moneda: 'CRC',
-  /** ConfiguraciÃ³n regional usada por los formateadores. */
+  /** Configuración regional usada por los formateadores. */
   locale: 'es-CR',
   /** Nombre de la base IndexedDB. */
   nombreBaseDatos: 'fintrack',
-  /** VersiÃ³n del esquema de Dexie. Subir al cambiar tablas o Ã­ndices. */
+  /** Versión del esquema de Dexie. Subir al cambiar tablas o índices. */
   versionBaseDatos: 3,
-  /** Clave de sesiÃ³n en sessionStorage. */
+  /** Clave de sesión en sessionStorage. */
   claveSesion: 'fintrack:sesion:v1',
-  /** Longitud mÃ­nima de contraseÃ±a. */
+  /** Longitud mínima de contraseña. */
   longitudMinimaContrasena: 8,
-  /** Longitud del cÃ³digo de recuperaciÃ³n (sin contar guiones). */
+  /** Longitud del código de recuperación (sin contar guiones). */
   longitudCodigoRecuperacion: 12,
-  /** Iteraciones de PBKDF2-SHA256 (recomendaciÃ³n OWASP). */
+  /** Iteraciones de PBKDF2-SHA256 (recomendación OWASP). */
   iteracionesHash: 210_000,
   /** Intentos fallidos antes de empezar a frenar la respuesta. */
   intentosAntesDeEspera: 3,
-  /** Espera mÃ¡xima por intento fallido, en milisegundos. */
+  /** Espera máxima por intento fallido, en milisegundos. */
   esperaMaximaMs: 8_000,
 } as const;

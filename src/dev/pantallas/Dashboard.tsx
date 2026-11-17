@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Badge, Button, Card, Col, ProgressBar, Row, Table } from 'react-bootstrap';
 import type { Categoria, Cuenta, SaldoCuenta, Transaccion, Usuario } from '../../models';
 import { TipoTransaccion } from '../../models';
@@ -81,7 +81,7 @@ export function Dashboard({ usuario, irA }: Props) {
     setVersion((actual) => actual + 1);
   };
 
-  if (cargando) return <Cargando texto="Calculando su situaciÃ³n financieraâ€¦" />;
+  if (cargando) return <Cargando texto="Calculando su situación financiera…" />;
   if (errorCarga) {
     return (
       <AlertaErrorCarga mensaje={errorCarga} onReintentar={reintentarCarga} />
@@ -91,7 +91,7 @@ export function Dashboard({ usuario, irA }: Props) {
 
   const patrimonio = sumarMontos(saldos.map((cuenta) => cuenta.saldo));
   const nombreCategoria = (id: string) =>
-    categorias.find((categoria) => categoria.id === id)?.nombre ?? 'Sin categorÃ­a';
+    categorias.find((categoria) => categoria.id === id)?.nombre ?? 'Sin categoría';
   const nombreCuenta = (id: string) =>
     cuentas.find((cuenta) => cuenta.id === id)?.nombre ?? 'Sin cuenta';
   const mesActual = new Date().toLocaleDateString('es-CR', {
@@ -103,7 +103,7 @@ export function Dashboard({ usuario, irA }: Props) {
     <>
       <div className="d-flex flex-wrap justify-content-between align-items-end gap-2 mb-4">
         <div>
-          <h1 className="h4 mb-1">Hola, {usuario.nombre.split(' ')[0]} ðŸ‘‹</h1>
+          <h1 className="h4 mb-1">Hola, {usuario.nombre.split(' ')[0]} 👋</h1>
           <p className="text-muted mb-0 text-capitalize">{mesActual}</p>
         </div>
         <Button onClick={() => irA('movimientos')}>+ Registrar movimiento</Button>
@@ -115,7 +115,7 @@ export function Dashboard({ usuario, irA }: Props) {
             <div>
               <Card.Title className="h5 mb-1">Empiece por su primer movimiento</Card.Title>
               <p className="text-muted mb-0">
-                Registre un ingreso o un gasto y el dashboard se llenarÃ¡ solo.
+                Registre un ingreso o un gasto y el dashboard se llenará solo.
               </p>
             </div>
             <Button onClick={() => irA('movimientos')}>Registrar ahora</Button>
@@ -295,7 +295,7 @@ export function Dashboard({ usuario, irA }: Props) {
         <Col xs={12} xl={5}>
           <Card className="h-100">
             <Card.Body>
-              <Card.Title className="h5 mb-3">Gastos del mes por categorÃ­a</Card.Title>
+              <Card.Title className="h5 mb-3">Gastos del mes por categoría</Card.Title>
               <GraficoCategorias datos={resumenMes.porCategoria} />
             </Card.Body>
           </Card>
@@ -307,22 +307,22 @@ export function Dashboard({ usuario, irA }: Props) {
           <Card className="h-100">
             <Card.Body>
               <div className="d-flex justify-content-between align-items-center mb-3">
-                <Card.Title className="h5 mb-0">Ãšltimos movimientos</Card.Title>
+                <Card.Title className="h5 mb-0">Últimos movimientos</Card.Title>
                 <Button size="sm" variant="outline-primary" onClick={() => irA('movimientos')}>
                   Ver todos
                 </Button>
               </div>
 
               {ultimas.length === 0 ? (
-                <p className="text-muted mb-0">TodavÃ­a no hay movimientos.</p>
+                <p className="text-muted mb-0">Todavía no hay movimientos.</p>
               ) : (
                 <div className="table-responsive">
                   <Table hover size="sm" className="align-middle mb-0">
                     <thead>
                       <tr>
                         <th>Fecha</th>
-                        <th>DescripciÃ³n</th>
-                        <th>CategorÃ­a</th>
+                        <th>Descripción</th>
+                        <th>Categoría</th>
                         <th className="text-end">Monto</th>
                       </tr>
                     </thead>
@@ -344,7 +344,7 @@ export function Dashboard({ usuario, irA }: Props) {
                                 : 'text-danger'
                             }`}
                           >
-                            {transaccion.tipo === TipoTransaccion.Ingreso ? '+' : 'âˆ’'}
+                            {transaccion.tipo === TipoTransaccion.Ingreso ? '+' : '−'}
                             {formatearMoneda(transaccion.monto)}
                           </td>
                         </tr>
@@ -399,7 +399,7 @@ export function Dashboard({ usuario, irA }: Props) {
 
               <hr />
               <div className="small text-muted">
-                Ãšltimo mes disponible: {formatearMes(
+                Último mes disponible: {formatearMes(
                   resumenTotal.porMes.length > 0
                     ? resumenTotal.porMes[resumenTotal.porMes.length - 1].mes
                     : `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`,
