@@ -492,13 +492,22 @@ La tabla `usuarios` guarda además `hashContrasena`, `sal`, `hashRecuperacion` y
 | --- | --- |
 | **Acceso** | Login, registro abierto, recuperación con código y pantalla de código único |
 | **Dashboard** | KPIs del mes, patrimonio, flujo mensual, gastos por categoría y últimos movimientos |
-| **Movimientos** | Alta con tipo/monto/fecha/categoría/cuenta/método/estado/etiquetas y casilla **Repetir** (diaria, semanal o mensual, con fin opcional); administración de reglas (pausar, reanudar, eliminar), filtros y eliminación; botón de 8 ejemplos |
-| **Cuentas** | Saldos calculados, alta y archivado de cuentas, transferencias entre cuentas |
-| **Categorías** | Árbol ingreso/gasto con uso real y alta de raíces o subcategorías |
-| **Reportes** | Rango de fechas con atajos, estado de resultados, gráficos, PDF y CSV |
+| **Movimientos** | Alta con tipo/monto/fecha/categoría/cuenta/método/estado/etiquetas y casilla **Repetir** (diaria, semanal o mensual, con fin opcional); administración de reglas (pausar, reanudar, eliminar), filtros y eliminación; botón de 8 ejemplos; encabezados ordenables |
+| **Cuentas** | Saldos calculados, alta y archivado de cuentas, transferencias entre cuentas; encabezados ordenables |
+| **Categorías** | Árbol ingreso/gasto con uso real y alta de raíces o subcategorías; encabezados ordenables (raíces y hermanos) |
+| **Reportes** | Rango de fechas con atajos, estado de resultados, gráficos, PDF y CSV; encabezados ordenables dentro de cada grupo |
 | **Mi cuenta** | Perfil, cambio de contraseña, respaldo exportar/importar, reset y eliminación |
 
-La navegación es por estado (no hay router instalado). Toda la UI usa React Bootstrap: no hay archivos CSS nuevos. Los resultados de las acciones se informan con toasts; los errores de campo se muestran inline y los fallos de carga con una alerta que permite reintentar.
+La navegación es por estado (no hay router instalado). Toda la UI usa React Bootstrap; el único CSS propio del demo es `src/dev/componentes/tablaOrdenable.css`, que ajusta el botón del encabezado ordenable. Los resultados de las acciones se informan con toasts; los errores de campo se muestran inline y los fallos de carga con una alerta que permite reintentar.
+
+### Tablas ordenables
+
+- Las tablas de **Movimientos**, **Cuentas**, **Categorías**, **Reportes** y la tarjeta de **reglas recurrentes** ordenan al hacer clic en el título de una columna.
+- Cada columna sigue el ciclo del explorador de archivos: **mayor a menor → menor a mayor → orden original**. El tercer clic devuelve el orden que entrega el servicio (por ejemplo, movimientos de más reciente a más antiguo).
+- Los montos se comparan por **valor absoluto**; texto y fechas usan las reglas del español (`Intl.Collator` con acentos y números) y las fechas ISO se comparan cronológicamente.
+- Los valores vacíos (sin presupuesto, sin próxima fecha) quedan siempre al final, en ambas direcciones, y los empates conservan el orden de llegada.
+- En Categorías se ordenan las raíces y, dentro de cada raíz, sus subcategorías: la jerarquía no se rompe. En Reportes solo se ordenan las filas de cada grupo; los totales quedan fijos.
+- El orden vive en memoria: al cambiar de pantalla se reinicia. Los encabezados exponen `aria-sort` y una descripción para lectores de pantalla.
 
 ### Cómo funcionan los movimientos recurrentes
 
@@ -685,7 +694,7 @@ Las pantallas de `src/dev/pantallas` son la referencia completa de consumo del s
 ```bash
 npm run build   # tsc -b + vite build
 npm run lint    # ESLint
-npm test        # 75 comprobaciones de comportamiento
+npm test        # 103 comprobaciones de comportamiento
 ```
 
 La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModule` y cubre:
@@ -699,7 +708,8 @@ La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModu
 - respaldo, importación con ids regenerados y reseteo;
 - movimientos recurrentes: ocurrencias vencidas, idempotencia, reglas futuras sin movimientos, pausa/reanudación, fin de mes, respaldo/importación con remapeo y aislamiento entre usuarios;
 - normalización de errores de validación, sesión, cuota de almacenamiento y fallos técnicos;
-- cambio de contraseña, recuperación con rotación de código y eliminación de cuenta.
+- cambio de contraseña, recuperación con rotación de código y eliminación de cuenta;
+- ordenamiento de tablas: ciclo descendente/ascendente/original, texto con acentos y números, fechas, montos, valores vacíos al final y empates estables.
 
 El build de producción genera `dist/manifest.webmanifest`, `dist/sw.js` y los iconos de la PWA, y **no incluye** `demo.html` ni `src/dev`. Para verificarlo:
 
@@ -745,3 +755,5 @@ La instalación y el modo offline se comprueban con `npm run preview` y DevTools
 | 2026-11-16 | **PWA offline e instalable.** Se instala `vite-plugin-pwa` 2 y se configura `VitePWA` con `registerType: 'autoUpdate'`, precache de JS/CSS/HTML/ICO/PNG/SVG/WOFF2, `cleanupOutdatedCaches` y `navigateFallback` al `index.html`. Manifiesto FinTrack en modo `standalone` con `theme_color: #0d6efd` e iconos de 192 y 512 px. El registro del service worker se inyecta automáticamente, sin tocar `main.tsx`. Se añaden los iconos PNG generados por `scripts/generar-iconos.mjs` (sin dependencias) y en `index.html` el `theme-color` y el `apple-touch-icon`. El build produce `manifest.webmanifest` y `sw.js` sin incluir `demo.html` ni `src/dev`; build, lint y 75 pruebas en verde. | `package.json`, `package-lock.json`, `vite.config.ts`, `index.html`, `public/pwa-192x192.png`, `public/pwa-512x512.png`, `scripts/generar-iconos.mjs`, `README.md` |
 | 2026-11-16 | **Sistema híbrido de control de gastos y presupuestos.** Entidad Presupuesto con validaciones y serialización. Esquema Dexie v3 con tabla presupuestos e índices compuestos. CRUD de presupuestos con cálculo de consumo acumulado por jerarquía (subcategorías) y clasificación de estados (Normal, Advertencia, Excedido). Alerta automática por concentración de gasto (>= 30% del gasto total). Meta de ahorro mensual en configuración y progreso en tiempo real. Soporte completo en respaldos v3 con retrocompatibilidad v1/v2. En UI: Alertas de consumo y progreso en Dashboard, gestión de presupuestos en Categorías y meta de ahorro en Mi Cuenta. Pruebas de humo suben a 91 verificaciones. | src/models/*, src/db/*, src/services/*, src/dev/*, scripts/smoke.mjs, README.md |
 | 2026-11-17 | **Iconos generados desde el logotipo en pixel art.** `scripts/generar-iconos.mjs` lee `src/assets/Logotipo.png` (16 x 16 RGBA) con un decodificador PNG propio basado en `node:zlib` (chunks IDAT, filtros None/Sub/Up/Average/Paeth, sin dependencias externas) y genera `public/favicon.svg` (un `<rect>` por píxel no transparente, `shape-rendering="crispEdges"`) y los PNG `pwa-192x192.png` y `pwa-512x512.png` con escalado Nearest Neighbor exacto de 12x y 32x. El build de la PWA precachea los tres archivos y el manifiesto los referencia. | `scripts/generar-iconos.mjs`, `public/favicon.svg`, `public/pwa-192x192.png`, `public/pwa-512x512.png`, `README.md` |
+| 2026-11-17 | **Reparación de codificación (mojibake).** Diez archivos heredados del commit `1d71ae4` tenían texto UTF-8 re-interpretado como Windows-1252 (acentos y emojis convertidos en secuencias extrañas) y BOM añadidos por la misma corrupción. Se restauraron los caracteres originales tramo por tramo, conservando los fragmentos que ya estaban correctos, y se eliminaron los BOM y los caracteres de control `U+008D`/`U+008F`. Resultado: 0 marcas de mojibake y UTF-8 sin BOM en todo el proyecto; build, lint y 91 pruebas en verde. | `scripts/smoke.mjs`, `src/config/app.ts`, `src/db/baseDatos.ts`, `src/db/semilla.ts`, `src/dev/pantallas/*`, `src/models/tipos.ts`, `src/services/FinanzasService.ts`, `src/services/LocalFinanzasService.ts`, `README.md` |
+| 2026-11-17 | **Tablas ordenables en la demo.** Módulo puro `ordenTabla.ts` (comparadores de texto con `Intl.Collator` en español, número, fecha y booleano), hook `useOrdenTabla` y encabezado accesible `ThOrdenable` con `aria-sort`. Cada columna cicla mayor a menor → menor a mayor → orden original; los montos se ordenan por valor absoluto y los vacíos quedan al final. Se aplica a Movimientos, Cuentas, reglas recurrentes, Categorías (raíces y hermanos, jerarquía intacta) y Reportes (solo filas internas de cada grupo); el Dashboard no cambia. El orden es en memoria y se reinicia al navegar. Sin dependencias nuevas y todo dentro de `src/dev`. La prueba de humo sube de 91 a 103 comprobaciones. | `src/dev/componentes/ordenTabla.ts`, `useOrdenTabla.ts`, `ThOrdenable.tsx`, `tablaOrdenable.css`, `TablaRecurrencias.tsx`, `src/dev/pantallas/{Movimientos,Cuentas,Categorias,Reportes}.tsx`, `scripts/smoke.mjs`, `README.md` |

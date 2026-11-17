@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
-import type { EstadoResultados, Usuario } from '../../models';
+import type { EstadoResultados, FilaEstadoResultados, Usuario } from '../../models';
 import type { ResumenFinanciero } from '../../models/tipos';
 import { finanzasService } from '../../services';
 import {
@@ -21,6 +21,15 @@ import {
 } from '../../utils/reportesPdf';
 import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
 import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { ThOrdenable } from '../componentes/ThOrdenable';
+import {
+  ORDEN_INICIAL,
+  compararNumero,
+  compararTexto,
+  ordenarFilas,
+  siguienteOrden,
+} from '../componentes/ordenTabla';
+import type { EstadoOrden } from '../componentes/ordenTabla';
 import { useErroresFormulario } from '../componentes/useErroresFormulario';
 import { mensajeDeError } from '../../utils/errores';
 import { GraficoCategorias, GraficoFlujo } from '../componentes/Graficos';
@@ -59,6 +68,8 @@ export function Reportes({ usuario }: Props) {
   const [cargando, setCargando] = useState(true);
   const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
+  const [ordenReporte, setOrdenReporte] =
+    useState<EstadoOrden>(ORDEN_INICIAL);
 
   useEffect(() => {
     if (desde > hasta) return;
@@ -183,6 +194,20 @@ export function Reportes({ usuario }: Props) {
     datos && datos.estado.totalIngresos > 0
       ? (datos.estado.utilidad / datos.estado.totalIngresos) * 100
       : 0;
+
+  const comparadoresReporte = {
+    concepto: compararTexto<FilaEstadoResultados>((fila) => fila.nombre),
+    monto: compararNumero<FilaEstadoResultados>((fila) => fila.total),
+    porcentaje: compararNumero<FilaEstadoResultados>((fila) => fila.total),
+  };
+  const ingresosOrdenados = ordenarFilas(
+    ingresos,
+    ordenReporte,
+    comparadoresReporte,
+  );
+  const gastosOrdenados = ordenarFilas(gastos, ordenReporte, comparadoresReporte);
+  const alternarReporte = (clave: string) =>
+    setOrdenReporte((actual) => siguienteOrden(actual, clave));
 
   return (
     <>
@@ -396,9 +421,29 @@ export function Reportes({ usuario }: Props) {
                   <Table hover size="sm" className="align-middle mb-0">
                     <thead>
                       <tr>
-                        <th>Concepto</th>
-                        <th className="text-end">Monto</th>
-                        <th className="text-end">% del grupo</th>
+                        <ThOrdenable
+                          clave="concepto"
+                          orden={ordenReporte}
+                          onAlternar={alternarReporte}
+                        >
+                          Concepto
+                        </ThOrdenable>
+                        <ThOrdenable
+                          clave="monto"
+                          orden={ordenReporte}
+                          onAlternar={alternarReporte}
+                          className="text-end"
+                        >
+                          Monto
+                        </ThOrdenable>
+                        <ThOrdenable
+                          clave="porcentaje"
+                          orden={ordenReporte}
+                          onAlternar={alternarReporte}
+                          className="text-end"
+                        >
+                          % del grupo
+                        </ThOrdenable>
                       </tr>
                     </thead>
                     <tbody>
@@ -407,7 +452,7 @@ export function Reportes({ usuario }: Props) {
                           Ingresos
                         </td>
                       </tr>
-                      {ingresos.map((fila) => (
+                      {ingresosOrdenados.map((fila) => (
                         <tr key={fila.categoriaId}>
                           <td className="ps-4">{fila.nombre}</td>
                           <td className="text-end text-nowrap">
@@ -435,7 +480,7 @@ export function Reportes({ usuario }: Props) {
                           Gastos
                         </td>
                       </tr>
-                      {gastos.map((fila) => (
+                      {gastosOrdenados.map((fila) => (
                         <tr key={fila.categoriaId}>
                           <td className="ps-4">{fila.nombre}</td>
                           <td className="text-end text-nowrap">

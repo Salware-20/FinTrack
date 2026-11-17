@@ -30,6 +30,13 @@ import {
 import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
 import { useNotificaciones } from '../componentes/notificacionesContexto';
 import { TablaRecurrencias } from '../componentes/TablaRecurrencias';
+import { ThOrdenable } from '../componentes/ThOrdenable';
+import { useOrdenTabla } from '../componentes/useOrdenTabla';
+import {
+  compararFecha,
+  compararNumero,
+  compararTexto,
+} from '../componentes/ordenTabla';
 import { useErroresFormulario } from '../componentes/useErroresFormulario';
 import { mensajeDeError } from '../../utils/errores';
 
@@ -376,6 +383,32 @@ export function Movimientos() {
     categorias.find((categoria) => categoria.id === id)?.nombre ?? 'Sin categoría';
   const nombreCuenta = (id: string) =>
     cuentas.find((cuenta) => cuenta.id === id)?.nombre ?? 'Sin cuenta';
+
+  const {
+    filas: transaccionesOrdenadas,
+    orden,
+    alternar,
+  } = useOrdenTabla(transacciones, {
+    fecha: compararFecha<Transaccion>((transaccion) => transaccion.fecha),
+    descripcion: compararTexto<Transaccion>(
+      (transaccion) => transaccion.descripcion,
+    ),
+    categoria: compararTexto<Transaccion>((transaccion) =>
+      nombreCategoria(transaccion.categoriaId),
+    ),
+    cuenta: compararTexto<Transaccion>((transaccion) =>
+      nombreCuenta(transaccion.cuentaId),
+    ),
+    metodo: compararTexto<Transaccion>((transaccion) =>
+      formatearMetodoPago(transaccion.metodoPago),
+    ),
+    estado: compararTexto<Transaccion>((transaccion) =>
+      formatearEstado(transaccion.estado),
+    ),
+    monto: compararNumero<Transaccion>((transaccion) =>
+      Math.abs(transaccion.monto),
+    ),
+  });
 
   return (
     <>
@@ -765,18 +798,37 @@ export function Movimientos() {
               <Table hover size="sm" className="align-middle mb-0">
                 <thead>
                   <tr>
-                    <th>Fecha</th>
-                    <th>Descripción</th>
-                    <th>Categoría</th>
-                    <th>Cuenta</th>
-                    <th>Método</th>
-                    <th>Estado</th>
-                    <th className="text-end">Monto</th>
+                    <ThOrdenable clave="fecha" orden={orden} onAlternar={alternar}>
+                      Fecha
+                    </ThOrdenable>
+                    <ThOrdenable clave="descripcion" orden={orden} onAlternar={alternar}>
+                      Descripción
+                    </ThOrdenable>
+                    <ThOrdenable clave="categoria" orden={orden} onAlternar={alternar}>
+                      Categoría
+                    </ThOrdenable>
+                    <ThOrdenable clave="cuenta" orden={orden} onAlternar={alternar}>
+                      Cuenta
+                    </ThOrdenable>
+                    <ThOrdenable clave="metodo" orden={orden} onAlternar={alternar}>
+                      Método
+                    </ThOrdenable>
+                    <ThOrdenable clave="estado" orden={orden} onAlternar={alternar}>
+                      Estado
+                    </ThOrdenable>
+                    <ThOrdenable
+                      clave="monto"
+                      orden={orden}
+                      onAlternar={alternar}
+                      className="text-end"
+                    >
+                      Monto
+                    </ThOrdenable>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {transacciones.map((transaccion) => (
+                  {transaccionesOrdenadas.map((transaccion) => (
                     <tr key={transaccion.id}>
                       <td className="text-nowrap">{formatearFecha(transaccion.fecha)}</td>
                       <td>

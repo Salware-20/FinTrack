@@ -1,4 +1,4 @@
-﻿import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Badge, Button, Card, Col, Form, Modal, Row, Table } from 'react-bootstrap';
 import type { Categoria, Presupuesto, Transaccion } from '../../models';
@@ -7,6 +7,15 @@ import { finanzasService } from '../../services';
 import { formatearMoneda, formatearPorcentaje, formatearTipo } from '../../utils/formato';
 import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
 import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { ThOrdenable } from '../componentes/ThOrdenable';
+import {
+  ORDEN_INICIAL,
+  compararNumero,
+  compararTexto,
+  ordenarFilas,
+  siguienteOrden,
+} from '../componentes/ordenTabla';
+import type { EstadoOrden } from '../componentes/ordenTabla';
 import { useErroresFormulario } from '../componentes/useErroresFormulario';
 import { mensajeDeError } from '../../utils/errores';
 
@@ -44,10 +53,10 @@ const FORMULARIO_INICIAL: FormularioCategoria = {
 const CAMPOS_CATEGORIA = ['nombre', 'padreId'] as const;
 
 /**
- * Pantalla de categorÃ­as de la demo.
+ * Pantalla de categorías de la demo.
  *
- * Muestra el Ã¡rbol ingreso/gasto con el uso real de cada categorÃ­a y permite
- * crear categorÃ­as raÃ­z o subcategorÃ­as del mismo tipo.
+ * Muestra el árbol ingreso/gasto con el uso real de cada categoría y permite
+ * crear categorías raíz o subcategorías del mismo tipo.
  */
 export function Categorias() {
   const notificaciones = useNotificaciones();
@@ -66,6 +75,8 @@ export function Categorias() {
   const [version, setVersion] = useState(0);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [formulario, setFormulario] = useState({ ...FORMULARIO_INICIAL });
+  const [ordenCategorias, setOrdenCategorias] =
+    useState<EstadoOrden>(ORDEN_INICIAL);
 
   useEffect(() => {
     let activo = true;
@@ -114,7 +125,7 @@ export function Categorias() {
       setFormulario((previo) => ({ ...previo, nombre: '', icono: '' }));
       setMostrarFormulario(false);
       limpiarTodo();
-      notificaciones.exito('CategorÃ­a creada.');
+      notificaciones.exito('Categoría creada.');
       recargar();
     } catch (fallo) {
       manejar(fallo, CAMPOS_CATEGORIA);
@@ -207,7 +218,27 @@ export function Categorias() {
     [TipoTransaccion.Gasto]: totalPorTipo(TipoTransaccion.Gasto),
   };
 
-  if (cargando) return <Cargando texto="Cargando categorÃ­asâ€¦" />;
+  const comparadoresCategorias = {
+    categoria: compararTexto<Categoria>((categoria) => categoria.nombre),
+    movimientos: compararNumero<Categoria>(
+      (categoria) => usoDe(categoria.id).cantidad,
+    ),
+    total: compararNumero<Categoria>((categoria) => usoDe(categoria.id).total),
+    porcentaje: compararNumero<Categoria>(
+      (categoria) => usoDe(categoria.id).total,
+    ),
+    presupuesto: compararNumero<Categoria>((categoria) => {
+      const presupuesto = presupuestos.find(
+        (item) => item.categoriaId === categoria.id && item.activo,
+      );
+      return presupuesto ? presupuesto.montoLimite : null;
+    }),
+  };
+
+  const alternarCategorias = (clave: string) =>
+    setOrdenCategorias((actual) => siguienteOrden(actual, clave));
+
+  if (cargando) return <Cargando texto="Cargando categorías…" />;
 
   const padresDisponibles = raices(formulario.tipo);
 
@@ -215,16 +246,16 @@ export function Categorias() {
     <>
       <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
-          <h1 className="h4 mb-1">CategorÃ­as</h1>
+          <h1 className="h4 mb-1">Categorías</h1>
           <p className="text-muted mb-0">
-            ClasificaciÃ³n jerÃ¡rquica de ingresos y gastos, pensada para Costa Rica.
+            Clasificación jerárquica de ingresos y gastos, pensada para Costa Rica.
           </p>
         </div>
         <Button onClick={() => {
           limpiarTodo();
           setMostrarFormulario((visible) => !visible);
         }}>
-          {mostrarFormulario ? 'Cerrar formulario' : '+ Nueva categorÃ­a'}
+          {mostrarFormulario ? 'Cerrar formulario' : '+ Nueva categoría'}
         </Button>
       </div>
 
@@ -233,7 +264,7 @@ export function Categorias() {
       {mostrarFormulario && (
         <Card className="mb-4">
           <Card.Body>
-            <Card.Title className="h5 mb-3">Nueva categorÃ­a</Card.Title>
+            <Card.Title className="h5 mb-3">Nueva categoría</Card.Title>
             <Form onSubmit={crear} noValidate>
               <Row className="g-3">
                 <Col xs={12} md={4}>
@@ -276,7 +307,7 @@ export function Categorias() {
                 </Col>
                 <Col xs={6} md={4}>
                   <Form.Group controlId="cat-padre">
-                    <Form.Label>CategorÃ­a padre (opcional)</Form.Label>
+                    <Form.Label>Categoría padre (opcional)</Form.Label>
                     <Form.Select
                       value={formulario.padreId}
                       isInvalid={Boolean(errores.padreId)}
@@ -288,7 +319,7 @@ export function Categorias() {
                         limpiar('padreId');
                       }}
                     >
-                      <option value="">Sin padre (categorÃ­a raÃ­z)</option>
+                      <option value="">Sin padre (categoría raíz)</option>
                       {padresDisponibles.map((categoria) => (
                         <option key={categoria.id} value={categoria.id}>
                           {categoria.icono} {categoria.nombre}
@@ -318,10 +349,10 @@ export function Categorias() {
                 </Col>
                 <Col xs={6} md={1}>
                   <Form.Group controlId="cat-icono">
-                    <Form.Label>Ãcono</Form.Label>
+                    <Form.Label>Ícono</Form.Label>
                     <Form.Control
                       value={formulario.icono}
-                      placeholder="ðŸ·ï¸"
+                      placeholder="🏷️"
                       maxLength={4}
                       onChange={(evento) =>
                         setFormulario((previo) => ({
@@ -336,7 +367,7 @@ export function Categorias() {
 
               <div className="d-flex gap-2 mt-3">
                 <Button type="submit" disabled={guardando}>
-                  {guardando ? 'Guardandoâ€¦' : 'Crear categorÃ­a'}
+                  {guardando ? 'Guardando…' : 'Crear categoría'}
                 </Button>
                 <Button
                   type="button"
@@ -362,30 +393,74 @@ export function Categorias() {
                 {tipo === TipoTransaccion.Ingreso ? 'Ingresos' : 'Gastos'}
               </Card.Title>
               <Badge bg={tipo === TipoTransaccion.Ingreso ? 'success' : 'danger'}>
-                Total histÃ³rico: {formatearMoneda(totales[tipo])}
+                Total histórico: {formatearMoneda(totales[tipo])}
               </Badge>
             </div>
 
             {raices(tipo).length === 0 ? (
               <p className="text-muted mb-0">
-                No hay categorÃ­as de {formatearTipo(tipo).toLowerCase()}.
+                No hay categorías de {formatearTipo(tipo).toLowerCase()}.
               </p>
             ) : (
               <div className="table-responsive">
                 <Table hover size="sm" className="align-middle mb-0">
                   <thead>
                     <tr>
-                      <th>CategorÃ­a</th>
-                      <th className="text-end">Movimientos</th>
-                      <th className="text-end">Total</th>
-                      <th className="text-end">% del tipo</th>
-                      {tipo === TipoTransaccion.Gasto && <th className="text-end">Presupuesto</th>}
+                      <ThOrdenable
+                        clave="categoria"
+                        orden={ordenCategorias}
+                        onAlternar={alternarCategorias}
+                      >
+                        Categoría
+                      </ThOrdenable>
+                      <ThOrdenable
+                        clave="movimientos"
+                        orden={ordenCategorias}
+                        onAlternar={alternarCategorias}
+                        className="text-end"
+                      >
+                        Movimientos
+                      </ThOrdenable>
+                      <ThOrdenable
+                        clave="total"
+                        orden={ordenCategorias}
+                        onAlternar={alternarCategorias}
+                        className="text-end"
+                      >
+                        Total
+                      </ThOrdenable>
+                      <ThOrdenable
+                        clave="porcentaje"
+                        orden={ordenCategorias}
+                        onAlternar={alternarCategorias}
+                        className="text-end"
+                      >
+                        % del tipo
+                      </ThOrdenable>
+                      {tipo === TipoTransaccion.Gasto && (
+                        <ThOrdenable
+                          clave="presupuesto"
+                          orden={ordenCategorias}
+                          onAlternar={alternarCategorias}
+                          className="text-end"
+                        >
+                          Presupuesto
+                        </ThOrdenable>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
-                    {raices(tipo).map((padre) => {
+                    {ordenarFilas(
+                      raices(tipo),
+                      ordenCategorias,
+                      comparadoresCategorias,
+                    ).map((padre) => {
                       const usoPadre = usoDe(padre.id);
-                      const hijos = hijosDe(padre.id);
+                      const hijos = ordenarFilas(
+                        hijosDe(padre.id),
+                        ordenCategorias,
+                        comparadoresCategorias,
+                      );
                       return (
                         <Fragment key={padre.id}>
                           <tr>
@@ -408,7 +483,7 @@ export function Categorias() {
                             </td>
                             <td className="text-end text-muted text-nowrap">
                               {totales[tipo] === 0
-                                ? 'â€”'
+                                ? '—'
                                 : formatearPorcentaje(
                                     (usoPadre.total / totales[tipo]) * 100,
                                   )}
@@ -445,7 +520,7 @@ export function Categorias() {
                             return (
                               <tr key={hijo.id}>
                                 <td className="ps-4 text-muted">
-                                  â†³ {hijo.icono} {hijo.nombre}
+                                  ↳ {hijo.icono} {hijo.nombre}
                                 </td>
                                 <td className="text-end">{usoHijo.cantidad}</td>
                                 <td className="text-end text-nowrap">
@@ -453,7 +528,7 @@ export function Categorias() {
                                 </td>
                                 <td className="text-end text-muted text-nowrap">
                                   {totales[tipo] === 0
-                                    ? 'â€”'
+                                    ? '—'
                                     : formatearPorcentaje(
                                         (usoHijo.total / totales[tipo]) * 100,
                                       )}
@@ -499,7 +574,7 @@ export function Categorias() {
       ))}
 
       <p className="text-muted small mb-0">
-        Las subcategorÃ­as heredan el tipo de su padre. Los totales se calculan con todos
+        Las subcategorías heredan el tipo de su padre. Los totales se calculan con todos
         los movimientos registrados, incluidos los pendientes.
       </p>
       {/* Modal para configurar o editar presupuesto */}

@@ -1,4 +1,4 @@
-﻿﻿import { CONFIG_APP } from '../config/app';
+import { CONFIG_APP } from '../config/app';
 import { baseDatos, BaseDatosFinanzas } from '../db/baseDatos';
 import type { RegistroConfiguracion, RegistroUsuario } from '../db/baseDatos';
 import {
@@ -86,10 +86,10 @@ function escaparCsv(valor: string | number): string {
 }
 
 /**
- * ImplementaciÃ³n local-first sobre IndexedDB.
+ * Implementación local-first sobre IndexedDB.
  *
- * - Todo dato financiero lleva `usuarioId` y se filtra por la sesiÃ³n activa.
- * - La sesiÃ³n guarda solo el id del usuario en `sessionStorage`.
+ * - Todo dato financiero lleva `usuarioId` y se filtra por la sesión activa.
+ * - La sesión guarda solo el id del usuario en `sessionStorage`.
  * - Los saldos nunca se almacenan: se calculan con movimientos confirmados.
  * - Las credenciales se guardan como hash PBKDF2 con sal individual.
  */
@@ -103,7 +103,7 @@ export class LocalFinanzasService implements FinanzasService {
   }
 
   // ---------------------------------------------------------------------------
-  // SesiÃ³n y cuenta
+  // Sesión y cuenta
   // ---------------------------------------------------------------------------
 
   async registrar(datos: NuevoUsuario): Promise<ResultadoRegistro> {
@@ -115,7 +115,7 @@ export class LocalFinanzasService implements FinanzasService {
       throw new ErrorValidacion('El nombre es obligatorio.', 'nombre');
     }
     if (!PATRON_CORREO.test(correo)) {
-      throw new ErrorValidacion('El correo no es vÃ¡lido.', 'correo');
+      throw new ErrorValidacion('El correo no es válido.', 'correo');
     }
     this.validarContrasena(contrasena);
 
@@ -178,7 +178,7 @@ export class LocalFinanzasService implements FinanzasService {
 
     if (!registro || !esValida) {
       this.registrarFallo(claveIntentos);
-      throw new ErrorValidacion('Correo o contraseÃ±a incorrectos.', 'contrasena');
+      throw new ErrorValidacion('Correo o contraseña incorrectos.', 'contrasena');
     }
 
     this.limpiarFallos(claveIntentos);
@@ -212,7 +212,7 @@ export class LocalFinanzasService implements FinanzasService {
     const sesion = await this.requerirSesion();
     const esValida = await verificarHash(actual, sesion.sal, sesion.hashContrasena);
     if (!esValida) {
-      throw new ErrorValidacion('La contraseÃ±a actual no es correcta.', 'actual');
+      throw new ErrorValidacion('La contraseña actual no es correcta.', 'actual');
     }
 
     this.validarContrasena(nueva);
@@ -248,7 +248,7 @@ export class LocalFinanzasService implements FinanzasService {
     if (!registro || !esValido) {
       this.registrarFallo(claveIntentos);
       throw new ErrorValidacion(
-        'El correo o el cÃ³digo de recuperaciÃ³n no son vÃ¡lidos.',
+        'El correo o el código de recuperación no son válidos.',
         'codigo',
       );
     }
@@ -285,7 +285,7 @@ export class LocalFinanzasService implements FinanzasService {
       sesion.hashContrasena,
     );
     if (!esValida) {
-      throw new ErrorValidacion('La contraseÃ±a no es correcta.', 'contrasena');
+      throw new ErrorValidacion('La contraseña no es correcta.', 'contrasena');
     }
 
     await this.db.transaction(
@@ -420,7 +420,7 @@ export class LocalFinanzasService implements FinanzasService {
     await this.db.cuentas.put(actualizada.toJSON());
 
     // Una cuenta archivada no admite movimientos nuevos: sus reglas se pausan
-    // para no acumular ocurrencias que luego no podrÃ­an aplicarse.
+    // para no acumular ocurrencias que luego no podrían aplicarse.
     if (!actualizada.activa) {
       await this.db.recurrencias
         .where('usuarioId')
@@ -502,7 +502,7 @@ export class LocalFinanzasService implements FinanzasService {
   }
 
   // ---------------------------------------------------------------------------
-  // CategorÃ­as
+  // Categorías
   // ---------------------------------------------------------------------------
 
   async listarCategorias(tipo?: TipoTransaccionType): Promise<Categoria[]> {
@@ -526,18 +526,18 @@ export class LocalFinanzasService implements FinanzasService {
     const nombre = datos.nombre ? datos.nombre.trim() : '';
 
     if (!nombre) {
-      throw new ErrorValidacion('El nombre de la categorÃ­a es obligatorio.', 'nombre');
+      throw new ErrorValidacion('El nombre de la categoría es obligatorio.', 'nombre');
     }
 
     let padreId: string | null = null;
     if (datos.padreId) {
       const padre = await this.db.categorias.get(datos.padreId);
       if (!padre || padre.usuarioId !== sesion.id) {
-        throw new ErrorValidacion('La categorÃ­a padre no existe.', 'padreId');
+        throw new ErrorValidacion('La categoría padre no existe.', 'padreId');
       }
       if (padre.tipo !== datos.tipo) {
         throw new ErrorValidacion(
-          'La subcategorÃ­a debe ser del mismo tipo que su padre.',
+          'La subcategoría debe ser del mismo tipo que su padre.',
           'padreId',
         );
       }
@@ -556,7 +556,7 @@ export class LocalFinanzasService implements FinanzasService {
     );
     if (duplicada) {
       throw new ErrorValidacion(
-        `Ya existe una categorÃ­a llamada "${nombre}" en ese nivel.`,
+        `Ya existe una categoría llamada "${nombre}" en ese nivel.`,
         'nombre',
       );
     }
@@ -609,7 +609,7 @@ export class LocalFinanzasService implements FinanzasService {
     const registro = await this.db.transacciones.get(id);
 
     if (!registro || registro.usuarioId !== sesion.id) {
-      throw new ErrorValidacion(`No existe una transacciÃ³n con id "${id}".`, 'id');
+      throw new ErrorValidacion(`No existe una transacción con id "${id}".`, 'id');
     }
 
     const transaccion = Transaccion.desdeJSON(registro);
@@ -628,7 +628,7 @@ export class LocalFinanzasService implements FinanzasService {
     const registro = await this.db.transacciones.get(id);
 
     if (!registro || registro.usuarioId !== sesion.id) {
-      throw new ErrorValidacion(`No existe una transacciÃ³n con id "${id}".`, 'id');
+      throw new ErrorValidacion(`No existe una transacción con id "${id}".`, 'id');
     }
 
     await this.db.transacciones.delete(id);
@@ -1068,13 +1068,13 @@ export class LocalFinanzasService implements FinanzasService {
       !Array.isArray(respaldo.transferencias)
     ) {
       throw new ErrorValidacion(
-        'El archivo de respaldo no es vÃ¡lido o es de otra versiÃ³n.',
+        'El archivo de respaldo no es válido o es de otra versión.',
         'respaldo',
       );
     }
 
     // Los respaldos v1 no incluyen reglas recurrentes: se aceptan igual y se
-    // importan como una lista vacÃ­a.
+    // importan como una lista vacía.
     const recurrenciasRespaldo = Array.isArray(respaldo.recurrencias)
       ? respaldo.recurrencias
       : [];
@@ -1084,7 +1084,7 @@ export class LocalFinanzasService implements FinanzasService {
       : [];
 
     try {
-      // Los respaldos conservan los ids del usuario que los generÃ³. Al importar
+      // Los respaldos conservan los ids del usuario que los generó. Al importar
       // en otra cuenta (que convive en la misma base) hay que regenerarlos y
       // remapear todas las referencias para no chocar con los datos existentes.
       const mapaCuentas = new Map<string, string>();
@@ -1121,7 +1121,7 @@ export class LocalFinanzasService implements FinanzasService {
           : null;
         if (categoria.padreId && !padreId) {
           throw new ErrorValidacion(
-            'El respaldo hace referencia a una categorÃ­a padre inexistente.',
+            'El respaldo hace referencia a una categoría padre inexistente.',
             'respaldo',
           );
         }
@@ -1143,13 +1143,13 @@ export class LocalFinanzasService implements FinanzasService {
         const categoriaId = mapaCategorias.get(recurrencia.categoriaId);
         if (!cuentaId || !categoriaId) {
           throw new ErrorValidacion(
-            'El respaldo tiene reglas con cuentas o categorÃ­as inexistentes.',
+            'El respaldo tiene reglas con cuentas o categorías inexistentes.',
             'respaldo',
           );
         }
         if (tiposDeCategoria.get(recurrencia.categoriaId) !== recurrencia.tipo) {
           throw new ErrorValidacion(
-            'El respaldo tiene reglas cuya categorÃ­a no coincide con el tipo.',
+            'El respaldo tiene reglas cuya categoría no coincide con el tipo.',
             'respaldo',
           );
         }
@@ -1169,13 +1169,13 @@ export class LocalFinanzasService implements FinanzasService {
         const categoriaId = mapaCategorias.get(transaccion.categoriaId);
         if (!cuentaId || !categoriaId) {
           throw new ErrorValidacion(
-            'El respaldo tiene movimientos con cuentas o categorÃ­as inexistentes.',
+            'El respaldo tiene movimientos con cuentas o categorías inexistentes.',
             'respaldo',
           );
         }
         if (tiposDeCategoria.get(transaccion.categoriaId) !== transaccion.tipo) {
           throw new ErrorValidacion(
-            'El respaldo tiene movimientos cuya categorÃ­a no coincide con el tipo.',
+            'El respaldo tiene movimientos cuya categoría no coincide con el tipo.',
             'respaldo',
           );
         }
@@ -1286,7 +1286,7 @@ export class LocalFinanzasService implements FinanzasService {
     } catch (fallo) {
       if (fallo instanceof ErrorValidacion) throw fallo;
       throw new ErrorValidacion(
-        'El archivo de respaldo tiene datos invÃ¡lidos.',
+        'El archivo de respaldo tiene datos inválidos.',
         'respaldo',
       );
     }
@@ -1307,10 +1307,10 @@ export class LocalFinanzasService implements FinanzasService {
     const cabecera = [
       'Fecha',
       'Tipo',
-      'DescripciÃ³n',
-      'CategorÃ­a',
+      'Descripción',
+      'Categoría',
       'Cuenta',
-      'MÃ©todo de pago',
+      'Método de pago',
       'Estado',
       'Monto',
       'Etiquetas',
@@ -1324,7 +1324,7 @@ export class LocalFinanzasService implements FinanzasService {
         transaccion.fecha,
         transaccion.esIngreso ? 'Ingreso' : 'Gasto',
         transaccion.descripcion,
-        categoria ? categoria.nombreCompleto(contexto.categorias) : 'Sin categorÃ­a',
+        categoria ? categoria.nombreCompleto(contexto.categorias) : 'Sin categoría',
         cuenta ? cuenta.nombre : 'Sin cuenta',
         transaccion.metodoPago,
         transaccion.estado,
@@ -1373,8 +1373,8 @@ export class LocalFinanzasService implements FinanzasService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Acepta respaldos de la versiÃ³n actual y anteriores. Las versiones futuras
-   * podrÃ­an contener campos que esta app no sabe leer.
+   * Acepta respaldos de la versión actual y anteriores. Las versiones futuras
+   * podrían contener campos que esta app no sabe leer.
    */
   private esVersionDeRespaldoValida(version: number): boolean {
     return (
@@ -1387,7 +1387,7 @@ export class LocalFinanzasService implements FinanzasService {
   private validarContrasena(contrasena: string): void {
     if (!contrasena || contrasena.length < CONFIG_APP.longitudMinimaContrasena) {
       throw new ErrorValidacion(
-        `La contraseÃ±a debe tener al menos ${CONFIG_APP.longitudMinimaContrasena} caracteres.`,
+        `La contraseña debe tener al menos ${CONFIG_APP.longitudMinimaContrasena} caracteres.`,
         'contrasena',
       );
     }
@@ -1423,20 +1423,20 @@ export class LocalFinanzasService implements FinanzasService {
     try {
       this.almacenSesion()?.removeItem(CONFIG_APP.claveSesion);
     } catch {
-      // Sin almacenamiento disponible: la sesiÃ³n en memoria ya se limpiÃ³.
+      // Sin almacenamiento disponible: la sesión en memoria ya se limpió.
     }
   }
 
   private async requerirSesion(): Promise<RegistroUsuario> {
     const id = this.leerSesionId();
     if (!id) {
-      throw new ErrorValidacion('Debe iniciar sesiÃ³n para continuar.', 'sesion');
+      throw new ErrorValidacion('Debe iniciar sesión para continuar.', 'sesion');
     }
 
     const registro = await this.db.usuarios.get(id);
     if (!registro) {
       this.limpiarSesion();
-      throw new ErrorValidacion('La sesiÃ³n expirÃ³. Vuelva a iniciar sesiÃ³n.', 'sesion');
+      throw new ErrorValidacion('La sesión expiró. Vuelva a iniciar sesión.', 'sesion');
     }
 
     return registro;
@@ -1474,7 +1474,7 @@ export class LocalFinanzasService implements FinanzasService {
    * Genera las transacciones vencidas de una regla o de todas las activas.
    *
    * El avance de `proximaFecha` y las inserciones ocurren dentro de la misma
-   * transacciÃ³n Dexie, por lo que procesar dos veces no duplica movimientos.
+   * transacción Dexie, por lo que procesar dos veces no duplica movimientos.
    * Nunca se generan fechas posteriores a hoy: los saldos no se alteran con
    * ocurrencias futuras.
    */
@@ -1527,7 +1527,7 @@ export class LocalFinanzasService implements FinanzasService {
             !categoria ||
             categoria.tipo !== registro.tipo
           ) {
-            // Referencias invÃ¡lidas: se conserva la regla sin avanzar para que
+            // Referencias inválidas: se conserva la regla sin avanzar para que
             // el usuario pueda corregirla cuando la interfaz lo permita.
             continue;
           }
@@ -1588,17 +1588,17 @@ export class LocalFinanzasService implements FinanzasService {
       throw new ErrorValidacion('La cuenta no existe o no le pertenece.', 'cuentaId');
     }
     if (!cuenta.activa) {
-      throw new ErrorValidacion('La cuenta estÃ¡ archivada.', 'cuentaId');
+      throw new ErrorValidacion('La cuenta está archivada.', 'cuentaId');
     }
     if (!categoria || categoria.usuarioId !== usuarioId) {
       throw new ErrorValidacion(
-        'La categorÃ­a no existe o no le pertenece.',
+        'La categoría no existe o no le pertenece.',
         'categoriaId',
       );
     }
     if (categoria.tipo !== tipo) {
       throw new ErrorValidacion(
-        `La categorÃ­a "${categoria.nombre}" es de tipo ${categoria.tipo} y la transacciÃ³n es de tipo ${tipo}.`,
+        `La categoría "${categoria.nombre}" es de tipo ${categoria.tipo} y la transacción es de tipo ${tipo}.`,
         'categoriaId',
       );
     }

@@ -1,4 +1,4 @@
-﻿import type { Categoria, DatosCategoria } from '../models/Categoria';
+import type { Categoria, DatosCategoria } from '../models/Categoria';
 import type { DatosPresupuesto, Presupuesto } from '../models/Presupuesto';
 import type { Cuenta, DatosCuenta } from '../models/Cuenta';
 import type { DatosRecurrencia, Recurrencia } from '../models/Recurrencia';
@@ -44,32 +44,32 @@ export interface RespaldoFinanzas {
 }
 
 /**
- * Contrato Ãºnico de acceso a los datos financieros.
+ * Contrato único de acceso a los datos financieros.
  *
- * La interfaz no recibe `usuarioId`: el servicio lo toma de la sesiÃ³n activa.
+ * La interfaz no recibe `usuarioId`: el servicio lo toma de la sesión activa.
  * Eso garantiza que ninguna pantalla pueda consultar datos de otro usuario.
  *
- * Todos los mÃ©todos son asÃ­ncronos (aunque la base sea local) para que la UI
+ * Todos los métodos son asíncronos (aunque la base sea local) para que la UI
  * maneje estados de carga de forma uniforme.
  *
  * Los errores de negocio se lanzan como `ErrorValidacion`.
  */
 export interface FinanzasService {
-  // --- SesiÃ³n y cuenta ------------------------------------------------------
-  /** Registra un usuario nuevo y devuelve el cÃ³digo de recuperaciÃ³n (una vez). */
+  // --- Sesión y cuenta ------------------------------------------------------
+  /** Registra un usuario nuevo y devuelve el código de recuperación (una vez). */
   registrar(datos: NuevoUsuario): Promise<ResultadoRegistro>;
   iniciarSesion(correo: string, contrasena: string): Promise<Usuario>;
   cerrarSesion(): Promise<void>;
-  /** Usuario de la sesiÃ³n activa, o `null` si no hay sesiÃ³n. */
+  /** Usuario de la sesión activa, o `null` si no hay sesión. */
   usuarioActual(): Promise<Usuario | null>;
   cambiarContrasena(actual: string, nueva: string): Promise<void>;
-  /** Cambia la contraseÃ±a con el cÃ³digo de recuperaciÃ³n. Rota el cÃ³digo. */
+  /** Cambia la contraseña con el código de recuperación. Rota el código. */
   recuperarContrasena(
     correo: string,
     codigo: string,
     nueva: string,
   ): Promise<ResultadoRecuperacion>;
-  /** Elimina la cuenta y todos sus datos. Requiere la contraseÃ±a. */
+  /** Elimina la cuenta y todos sus datos. Requiere la contraseña. */
   eliminarCuenta(contrasena: string): Promise<void>;
   obtenerConfiguracion(): Promise<ConfiguracionUsuario>;
   actualizarConfiguracion(cambios: Partial<ConfiguracionUsuario>): Promise<ConfiguracionUsuario>;
@@ -86,9 +86,9 @@ export interface FinanzasService {
   /** Saldo calculado de cada cuenta (solo movimientos confirmados). */
   obtenerSaldos(): Promise<SaldoCuenta[]>;
 
-  // --- CategorÃ­as -----------------------------------------------------------
+  // --- Categorías -----------------------------------------------------------
   listarCategorias(tipo?: TipoTransaccion): Promise<Categoria[]>;
-  /** Crea una categorÃ­a; el nombre es Ãºnico entre hermanas del mismo tipo. */
+  /** Crea una categoría; el nombre es único entre hermanas del mismo tipo. */
   crearCategoria(datos: NuevaCategoria): Promise<Categoria>;
 
   // --- Transacciones --------------------------------------------------------
@@ -103,7 +103,7 @@ export interface FinanzasService {
 
   // --- Recurrencias ---------------------------------------------------------
   listarRecurrencias(): Promise<Recurrencia[]>;
-  /** Crea la regla y genera las ocurrencias cuya fecha ya llegÃ³. */
+  /** Crea la regla y genera las ocurrencias cuya fecha ya llegó. */
   crearRecurrencia(datos: NuevaRecurrencia): Promise<ResultadoCreacionRecurrencia>;
   actualizarRecurrencia(
     id: string,
@@ -142,6 +142,6 @@ export interface FinanzasService {
   importarRespaldo(respaldo: RespaldoFinanzas): Promise<void>;
   /** Transacciones del usuario en formato CSV (separador coma). */
   exportarTransaccionesCsv(filtro?: FiltroTransacciones): Promise<string>;
-  /** Borra los movimientos del usuario y restaura categorÃ­as y cuenta base. */
+  /** Borra los movimientos del usuario y restaura categorías y cuenta base. */
   resetearDatos(): Promise<void>;
 }

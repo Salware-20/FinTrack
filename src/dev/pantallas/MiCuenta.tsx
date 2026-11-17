@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Badge, Button, Card, Col, Form, Row } from 'react-bootstrap';
 import type { Usuario } from '../../models';
@@ -29,8 +29,8 @@ function formatearFechaHora(iso: string): string {
 }
 
 /**
- * Pantalla "Mi cuenta" de la demo: perfil, contraseÃ±a, respaldo local,
- * restablecimiento de datos y eliminaciÃ³n de la cuenta.
+ * Pantalla "Mi cuenta" de la demo: perfil, contraseña, respaldo local,
+ * restablecimiento de datos y eliminación de la cuenta.
  */
 export function MiCuenta({ usuario, onSalir }: Props) {
   const notificaciones = useNotificaciones();
@@ -96,7 +96,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
     limpiarTodo();
 
     if (nueva !== confirmacion) {
-      marcar('confirmacion', 'La nueva contraseÃ±a y su confirmaciÃ³n no coinciden.');
+      marcar('confirmacion', 'La nueva contraseña y su confirmación no coinciden.');
       return;
     }
 
@@ -107,7 +107,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
       setNueva('');
       setConfirmacion('');
       limpiarTodo();
-      notificaciones.exito('ContraseÃ±a actualizada.');
+      notificaciones.exito('Contraseña actualizada.');
     } catch (fallo) {
       manejar(fallo, ['actual', 'contrasena']);
     } finally {
@@ -125,7 +125,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
         JSON.stringify(respaldo, null, 2),
         'application/json;charset=utf-8',
       );
-      notificaciones.exito('Respaldo descargado. GuÃ¡rdelo fuera de este equipo.');
+      notificaciones.exito('Respaldo descargado. Guárdelo fuera de este equipo.');
     } catch (fallo) {
       notificaciones.error(mensajeDeError(fallo));
     } finally {
@@ -158,7 +158,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
       );
     } catch (fallo) {
       if (fallo instanceof SyntaxError) {
-        marcar('respaldo', 'El archivo no es un JSON vÃ¡lido.');
+        marcar('respaldo', 'El archivo no es un JSON válido.');
       } else {
         manejar(fallo, ['respaldo']);
       }
@@ -169,7 +169,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
 
   const restablecerDatos = async () => {
     const confirmado = window.confirm(
-      'Se eliminarÃ¡n todas sus cuentas, movimientos y transferencias, y se restaurarÃ¡n las categorÃ­as base. Â¿Continuar?',
+      'Se eliminarán todas sus cuentas, movimientos y transferencias, y se restaurarán las categorías base. ¿Continuar?',
     );
     if (!confirmado) return;
 
@@ -177,7 +177,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
     try {
       await finanzasService.resetearDatos();
       notificaciones.exito(
-        'Datos restablecidos: categorÃ­as base y cuenta de efectivo.',
+        'Datos restablecidos: categorías base y cuenta de efectivo.',
       );
     } catch (fallo) {
       notificaciones.error(mensajeDeError(fallo));
@@ -191,7 +191,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
     limpiarTodo();
 
     if (!confirmarEliminar) {
-      notificaciones.aviso('Marque la casilla para confirmar la eliminaciÃ³n.');
+      notificaciones.aviso('Marque la casilla para confirmar la eliminación.');
       return;
     }
 
@@ -232,7 +232,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
           </p>
         </div>
         <Button variant="outline-secondary" disabled={ocupado} onClick={() => void cerrarSesion()}>
-          Cerrar sesiÃ³n
+          Cerrar sesión
         </Button>
       </div>
 
@@ -256,7 +256,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
               <dl className="row small mb-0">
                 <dt className="col-5 text-muted fw-normal">Cuenta creada</dt>
                 <dd className="col-7 mb-2">{formatearFechaHora(usuario.creadoEn)}</dd>
-                <dt className="col-5 text-muted fw-normal">Ãšltimo acceso</dt>
+                <dt className="col-5 text-muted fw-normal">Último acceso</dt>
                 <dd className="col-7 mb-2">{formatearFechaHora(usuario.ultimoAcceso)}</dd>
                 <dt className="col-5 text-muted fw-normal">Moneda</dt>
                 <dd className="col-7 mb-2">
@@ -291,8 +291,8 @@ export function MiCuenta({ usuario, onSalir }: Props) {
 
               <hr />
               <p className="text-muted small mb-0">
-                No hay roles ni administrador: cada cuenta ve Ãºnicamente sus propias
-                cuentas, categorÃ­as y movimientos.
+                No hay roles ni administrador: cada cuenta ve únicamente sus propias
+                cuentas, categorías y movimientos.
               </p>
             </Card.Body>
           </Card>
@@ -301,12 +301,12 @@ export function MiCuenta({ usuario, onSalir }: Props) {
         <Col xs={12} lg={7}>
           <Card className="h-100">
             <Card.Body>
-              <Card.Title className="h5 mb-3">Cambiar contraseÃ±a</Card.Title>
+              <Card.Title className="h5 mb-3">Cambiar contraseña</Card.Title>
               <Form onSubmit={cambiarContrasena} noValidate>
                 <Row className="g-3">
                   <Col xs={12}>
                     <Form.Group controlId="mi-actual">
-                      <Form.Label>ContraseÃ±a actual</Form.Label>
+                      <Form.Label>Contraseña actual</Form.Label>
                       <Form.Control
                         type="password"
                         autoComplete="current-password"
@@ -325,7 +325,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
                   </Col>
                   <Col xs={12} md={6}>
                     <Form.Group controlId="mi-nueva">
-                      <Form.Label>Nueva contraseÃ±a</Form.Label>
+                      <Form.Label>Nueva contraseña</Form.Label>
                       <Form.Control
                         type="password"
                         autoComplete="new-password"
@@ -338,7 +338,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
                           limpiar('contrasena');
                         }}
                       />
-                      <Form.Text>MÃ­nimo 8 caracteres.</Form.Text>
+                      <Form.Text>Mínimo 8 caracteres.</Form.Text>
                       <Form.Control.Feedback type="invalid">
                         {errores.contrasena}
                       </Form.Control.Feedback>
@@ -346,7 +346,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
                   </Col>
                   <Col xs={12} md={6}>
                     <Form.Group controlId="mi-confirmacion">
-                      <Form.Label>Confirmar nueva contraseÃ±a</Form.Label>
+                      <Form.Label>Confirmar nueva contraseña</Form.Label>
                       <Form.Control
                         type="password"
                         autoComplete="new-password"
@@ -365,7 +365,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
                   </Col>
                 </Row>
                 <Button type="submit" className="mt-3" disabled={ocupado}>
-                  {ocupado ? 'Guardandoâ€¦' : 'Cambiar contraseÃ±a'}
+                  {ocupado ? 'Guardando…' : 'Cambiar contraseña'}
                 </Button>
               </Form>
             </Card.Body>
@@ -377,8 +377,8 @@ export function MiCuenta({ usuario, onSalir }: Props) {
         <Card.Body>
           <Card.Title className="h5 mb-1">Respaldo de datos</Card.Title>
           <p className="text-muted small mb-3">
-            Exporte un JSON con todo su historial o restÃ¡urelo en este u otro navegador.
-            La importaciÃ³n reemplaza los datos actuales de su cuenta.
+            Exporte un JSON con todo su historial o restáurelo en este u otro navegador.
+            La importación reemplaza los datos actuales de su cuenta.
           </p>
 
           <Row className="g-3">
@@ -386,7 +386,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
               <div className="border rounded p-3 h-100">
                 <h2 className="h6">Exportar</h2>
                 <p className="text-muted small mb-2">
-                  Incluye cuentas, categorÃ­as, movimientos, transferencias y preferencias.
+                  Incluye cuentas, categorías, movimientos, transferencias y preferencias.
                 </p>
                 <Button
                   variant="outline-primary"
@@ -428,7 +428,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
                   className="mb-2"
                   checked={confirmarImportacion}
                   onChange={(evento) => setConfirmarImportacion(evento.target.checked)}
-                  label="Entiendo que se reemplazarÃ¡n mis datos actuales"
+                  label="Entiendo que se reemplazarán mis datos actuales"
                 />
                 <Button
                   variant="outline-secondary"
@@ -448,7 +448,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
         <Card.Body>
           <Card.Title className="h5 mb-1">Restablecer datos</Card.Title>
           <p className="text-muted small mb-3">
-            Borra cuentas, movimientos y transferencias y vuelve a las 34 categorÃ­as base
+            Borra cuentas, movimientos y transferencias y vuelve a las 34 categorías base
             con una cuenta de efectivo en cero. La cuenta de usuario se conserva.
           </p>
           <Button
@@ -473,7 +473,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
             <Row className="g-3 align-items-end">
               <Col xs={12} md={5}>
                 <Form.Group controlId="mi-eliminar-contrasena">
-                  <Form.Label>ContraseÃ±a</Form.Label>
+                  <Form.Label>Contraseña</Form.Label>
                   <Form.Control
                     type="password"
                     autoComplete="current-password"
@@ -513,7 +513,7 @@ export function MiCuenta({ usuario, onSalir }: Props) {
       </Card>
 
       <p className="text-muted small mt-3 mb-0">
-        Los datos de esta demo viven en IndexedDB y no se envÃ­an a ningÃºn servidor.
+        Los datos de esta demo viven en IndexedDB y no se envían a ningún servidor.
       </p>
     </>
   );
