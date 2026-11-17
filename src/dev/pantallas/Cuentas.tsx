@@ -21,6 +21,12 @@ import {
 import { sumarMontos } from '../../utils/numeros';
 import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
 import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { ThOrdenable } from '../componentes/ThOrdenable';
+import { useOrdenTabla } from '../componentes/useOrdenTabla';
+import {
+  compararNumero,
+  compararTexto,
+} from '../componentes/ordenTabla';
 import { useErroresFormulario } from '../componentes/useErroresFormulario';
 import { mensajeDeError } from '../../utils/errores';
 
@@ -138,6 +144,24 @@ export function Cuentas() {
     setCargando(true);
     recargar();
   };
+
+  const {
+    filas: saldosOrdenados,
+    orden,
+    alternar,
+  } = useOrdenTabla(saldos, {
+    cuenta: compararTexto<SaldoCuenta>((saldo) => saldo.nombre),
+    tipo: compararTexto<SaldoCuenta>((saldo) =>
+      formatearTipoCuenta(saldo.tipo),
+    ),
+    inicial: compararNumero<SaldoCuenta>(
+      (saldo) =>
+        cuentas.find((cuenta) => cuenta.id === saldo.cuentaId)?.saldoInicial ??
+        0,
+    ),
+    actual: compararNumero<SaldoCuenta>((saldo) => saldo.saldo),
+    estado: compararNumero<SaldoCuenta>((saldo) => (saldo.activa ? 1 : 0)),
+  });
 
   const crearCuenta = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
@@ -589,16 +613,36 @@ export function Cuentas() {
               <Table hover className="align-middle mb-0">
                 <thead>
                   <tr>
-                    <th>Cuenta</th>
-                    <th>Tipo</th>
-                    <th className="text-end">Saldo inicial</th>
-                    <th className="text-end">Saldo actual</th>
-                    <th>Estado</th>
+                    <ThOrdenable clave="cuenta" orden={orden} onAlternar={alternar}>
+                      Cuenta
+                    </ThOrdenable>
+                    <ThOrdenable clave="tipo" orden={orden} onAlternar={alternar}>
+                      Tipo
+                    </ThOrdenable>
+                    <ThOrdenable
+                      clave="inicial"
+                      orden={orden}
+                      onAlternar={alternar}
+                      className="text-end"
+                    >
+                      Saldo inicial
+                    </ThOrdenable>
+                    <ThOrdenable
+                      clave="actual"
+                      orden={orden}
+                      onAlternar={alternar}
+                      className="text-end"
+                    >
+                      Saldo actual
+                    </ThOrdenable>
+                    <ThOrdenable clave="estado" orden={orden} onAlternar={alternar}>
+                      Estado
+                    </ThOrdenable>
                     <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {saldos.map((saldo) => {
+                  {saldosOrdenados.map((saldo) => {
                     const cuenta = cuentas.find((item) => item.id === saldo.cuentaId);
                     return (
                       <tr key={saldo.cuentaId}>

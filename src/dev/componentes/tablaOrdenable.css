@@ -1,0 +1,30 @@
+.th-ordenable {
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  white-space: nowrap;
+  vertical-align: inherit;
+  text-decoration: none;
+}
+
+.th-ordenable:hover,
+.th-ordenable:focus-visible {
+  color: var(--bs-primary);
+  text-decoration: none;
+}
+
+.th-ordenable:focus-visible {
+  outline: 2px solid var(--bs-primary);
+  outline-offset: 2px;
+  border-radius: 0.125rem;
+}
+
+.th-ordenable-indicador {
+  font-size: 0.65em;
+  opacity: 0.4;
+}
+
+.th-ordenable-activa .th-ordenable-indicador {
+  opacity: 1;
+}

@@ -27,6 +27,14 @@ const { ErrorValidacion } = await servidor.ssrLoadModule('/src/models/errores.ts
 const { siguienteOcurrencia } = await servidor.ssrLoadModule(
   '/src/utils/recurrencia.ts',
 );
+const {
+  ORDEN_INICIAL,
+  siguienteOrden,
+  ordenarFilas,
+  compararTexto,
+  compararNumero,
+  compararFecha,
+} = await servidor.ssrLoadModule('/src/dev/componentes/ordenTabla.ts');
 
 let pruebas = 0;
 function afirmar(condicion, mensaje) {
@@ -520,6 +528,115 @@ try {
 
   await servicio.eliminarPresupuesto(presupuestoAlim.id);
   afirmar((await servicio.listarPresupuestos()).length === 0, 'elimina presupuesto correctamente');
+
+  // Ordenamiento de tablas de la demo
+  const filasNumero = [10, 2, 33].map((valor) => ({ valor }));
+  const porNumero = { valor: compararNumero((fila) => fila.valor) };
+  const numerosDesc = ordenarFilas(
+    filasNumero,
+    { clave: 'valor', direccion: 'desc' },
+    porNumero,
+  );
+  afirmar(
+    numerosDesc.map((fila) => fila.valor).join(',') === '33,10,2',
+    'ordena números de mayor a menor',
+  );
+  const numerosAsc = ordenarFilas(
+    filasNumero,
+    { clave: 'valor', direccion: 'asc' },
+    porNumero,
+  );
+  afirmar(
+    numerosAsc.map((fila) => fila.valor).join(',') === '2,10,33',
+    'ordena números de menor a mayor',
+  );
+  afirmar(
+    ordenarFilas(filasNumero, ORDEN_INICIAL, porNumero)
+      .map((fila) => fila.valor)
+      .join(',') === '10,2,33',
+    'el estado default conserva el orden original',
+  );
+
+  afirmar(
+    siguienteOrden(ORDEN_INICIAL, 'monto').direccion === 'desc',
+    'primer clic en una columna: mayor a menor',
+  );
+  afirmar(
+    siguienteOrden({ clave: 'monto', direccion: 'desc' }, 'monto').direccion ===
+      'asc',
+    'segundo clic: menor a mayor',
+  );
+  const tercerClic = siguienteOrden({ clave: 'monto', direccion: 'asc' }, 'monto');
+  afirmar(
+    tercerClic.clave === null && tercerClic.direccion === 'desc',
+    'tercer clic: vuelve al orden original',
+  );
+  afirmar(
+    siguienteOrden({ clave: 'monto', direccion: 'asc' }, 'fecha').clave ===
+      'fecha',
+    'cambiar de columna reinicia el ciclo',
+  );
+
+  const filasTexto = ['Categoría 10', 'categoría 2', 'Ávila', 'Banco'].map(
+    (nombre) => ({ nombre }),
+  );
+  const porTexto = { nombre: compararTexto((fila) => fila.nombre) };
+  afirmar(
+    ordenarFilas(
+      filasTexto,
+      { clave: 'nombre', direccion: 'asc' },
+      porTexto,
+    )
+      .map((fila) => fila.nombre)
+      .join('|') === 'Ávila|Banco|categoría 2|Categoría 10',
+    'ordena texto con acentos y números',
+  );
+
+  const filasFecha = ['2026-03-01', '2025-12-31', '2026-01-15'].map((fecha) => ({
+    fecha,
+  }));
+  const porFecha = { fecha: compararFecha((fila) => fila.fecha) };
+  afirmar(
+    ordenarFilas(
+      filasFecha,
+      { clave: 'fecha', direccion: 'asc' },
+      porFecha,
+    )
+      .map((fila) => fila.fecha)
+      .join('|') === '2025-12-31|2026-01-15|2026-03-01',
+    'ordena fechas cronológicamente',
+  );
+
+  const filasVacias = [{ valor: 5 }, { valor: null }, { valor: 1 }];
+  const porValor = { valor: compararNumero((fila) => fila.valor) };
+  for (const direccion of ['asc', 'desc']) {
+    const ordenadas = ordenarFilas(
+      filasVacias,
+      { clave: 'valor', direccion },
+      porValor,
+    );
+    afirmar(
+      ordenadas[ordenadas.length - 1].valor === null,
+      `deja los valores vacíos al final (${direccion})`,
+    );
+  }
+
+  const filasEmpate = [
+    { grupo: 'b', posicion: 1 },
+    { grupo: 'a', posicion: 2 },
+    { grupo: 'b', posicion: 3 },
+  ];
+  const porGrupo = { grupo: compararTexto((fila) => fila.grupo) };
+  afirmar(
+    ordenarFilas(
+      filasEmpate,
+      { clave: 'grupo', direccion: 'asc' },
+      porGrupo,
+    )
+      .map((fila) => fila.posicion)
+      .join(',') === '2,1,3',
+    'mantiene el orden original en los empates',
+  );
 
   console.log(`\n${pruebas} verificaciones correctas.`);
 } finally {

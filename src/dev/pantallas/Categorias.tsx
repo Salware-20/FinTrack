@@ -7,6 +7,15 @@ import { finanzasService } from '../../services';
 import { formatearMoneda, formatearPorcentaje, formatearTipo } from '../../utils/formato';
 import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
 import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { ThOrdenable } from '../componentes/ThOrdenable';
+import {
+  ORDEN_INICIAL,
+  compararNumero,
+  compararTexto,
+  ordenarFilas,
+  siguienteOrden,
+} from '../componentes/ordenTabla';
+import type { EstadoOrden } from '../componentes/ordenTabla';
 import { useErroresFormulario } from '../componentes/useErroresFormulario';
 import { mensajeDeError } from '../../utils/errores';
 
@@ -66,6 +75,8 @@ export function Categorias() {
   const [version, setVersion] = useState(0);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [formulario, setFormulario] = useState({ ...FORMULARIO_INICIAL });
+  const [ordenCategorias, setOrdenCategorias] =
+    useState<EstadoOrden>(ORDEN_INICIAL);
 
   useEffect(() => {
     let activo = true;
@@ -206,6 +217,26 @@ export function Categorias() {
     [TipoTransaccion.Ingreso]: totalPorTipo(TipoTransaccion.Ingreso),
     [TipoTransaccion.Gasto]: totalPorTipo(TipoTransaccion.Gasto),
   };
+
+  const comparadoresCategorias = {
+    categoria: compararTexto<Categoria>((categoria) => categoria.nombre),
+    movimientos: compararNumero<Categoria>(
+      (categoria) => usoDe(categoria.id).cantidad,
+    ),
+    total: compararNumero<Categoria>((categoria) => usoDe(categoria.id).total),
+    porcentaje: compararNumero<Categoria>(
+      (categoria) => usoDe(categoria.id).total,
+    ),
+    presupuesto: compararNumero<Categoria>((categoria) => {
+      const presupuesto = presupuestos.find(
+        (item) => item.categoriaId === categoria.id && item.activo,
+      );
+      return presupuesto ? presupuesto.montoLimite : null;
+    }),
+  };
+
+  const alternarCategorias = (clave: string) =>
+    setOrdenCategorias((actual) => siguienteOrden(actual, clave));
 
   if (cargando) return <Cargando texto="Cargando categorías…" />;
 
@@ -375,17 +406,61 @@ export function Categorias() {
                 <Table hover size="sm" className="align-middle mb-0">
                   <thead>
                     <tr>
-                      <th>Categoría</th>
-                      <th className="text-end">Movimientos</th>
-                      <th className="text-end">Total</th>
-                      <th className="text-end">% del tipo</th>
-                      {tipo === TipoTransaccion.Gasto && <th className="text-end">Presupuesto</th>}
+                      <ThOrdenable
+                        clave="categoria"
+                        orden={ordenCategorias}
+                        onAlternar={alternarCategorias}
+                      >
+                        Categoría
+                      </ThOrdenable>
+                      <ThOrdenable
+                        clave="movimientos"
+                        orden={ordenCategorias}
+                        onAlternar={alternarCategorias}
+                        className="text-end"
+                      >
+                        Movimientos
+                      </ThOrdenable>
+                      <ThOrdenable
+                        clave="total"
+                        orden={ordenCategorias}
+                        onAlternar={alternarCategorias}
+                        className="text-end"
+                      >
+                        Total
+                      </ThOrdenable>
+                      <ThOrdenable
+                        clave="porcentaje"
+                        orden={ordenCategorias}
+                        onAlternar={alternarCategorias}
+                        className="text-end"
+                      >
+                        % del tipo
+                      </ThOrdenable>
+                      {tipo === TipoTransaccion.Gasto && (
+                        <ThOrdenable
+                          clave="presupuesto"
+                          orden={ordenCategorias}
+                          onAlternar={alternarCategorias}
+                          className="text-end"
+                        >
+                          Presupuesto
+                        </ThOrdenable>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
-                    {raices(tipo).map((padre) => {
+                    {ordenarFilas(
+                      raices(tipo),
+                      ordenCategorias,
+                      comparadoresCategorias,
+                    ).map((padre) => {
                       const usoPadre = usoDe(padre.id);
-                      const hijos = hijosDe(padre.id);
+                      const hijos = ordenarFilas(
+                        hijosDe(padre.id),
+                        ordenCategorias,
+                        comparadoresCategorias,
+                      );
                       return (
                         <Fragment key={padre.id}>
                           <tr>

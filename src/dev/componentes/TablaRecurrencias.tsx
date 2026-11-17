@@ -6,6 +6,13 @@ import {
   formatearFrecuencia,
   formatearMoneda,
 } from '../../utils/formato';
+import { ThOrdenable } from './ThOrdenable';
+import { useOrdenTabla } from './useOrdenTabla';
+import {
+  compararFecha,
+  compararNumero,
+  compararTexto,
+} from './ordenTabla';
 
 interface Props {
   recurrencias: Recurrencia[];
@@ -35,6 +42,29 @@ export function TablaRecurrencias({
   const nombreCuenta = (id: string) =>
     cuentas.find((cuenta) => cuenta.id === id)?.nombre ?? 'Sin cuenta';
 
+  const {
+    filas: recurrenciasOrdenadas,
+    orden,
+    alternar,
+  } = useOrdenTabla(recurrencias, {
+    descripcion: compararTexto<Recurrencia>((recurrencia) => recurrencia.descripcion),
+    frecuencia: compararTexto<Recurrencia>((recurrencia) =>
+      formatearFrecuencia(recurrencia.frecuencia),
+    ),
+    proxima: compararFecha<Recurrencia>((recurrencia) =>
+      recurrencia.finalizada ? null : recurrencia.proximaFecha,
+    ),
+    categoria: compararTexto<Recurrencia>((recurrencia) =>
+      nombreCategoria(recurrencia.categoriaId),
+    ),
+    monto: compararNumero<Recurrencia>((recurrencia) =>
+      Math.abs(recurrencia.monto),
+    ),
+    estado: compararNumero<Recurrencia>((recurrencia) =>
+      recurrencia.finalizada ? 2 : recurrencia.activa ? 0 : 1,
+    ),
+  });
+
   return (
     <Card className="mb-3">
       <Card.Body>
@@ -61,17 +91,34 @@ export function TablaRecurrencias({
             <Table hover size="sm" className="align-middle mb-0">
               <thead>
                 <tr>
-                  <th>Descripción</th>
-                  <th>Frecuencia</th>
-                  <th>Próxima</th>
-                  <th>Categoría / Cuenta</th>
-                  <th className="text-end">Monto</th>
-                  <th>Estado</th>
+                  <ThOrdenable clave="descripcion" orden={orden} onAlternar={alternar}>
+                    Descripción
+                  </ThOrdenable>
+                  <ThOrdenable clave="frecuencia" orden={orden} onAlternar={alternar}>
+                    Frecuencia
+                  </ThOrdenable>
+                  <ThOrdenable clave="proxima" orden={orden} onAlternar={alternar}>
+                    Próxima
+                  </ThOrdenable>
+                  <ThOrdenable clave="categoria" orden={orden} onAlternar={alternar}>
+                    Categoría / Cuenta
+                  </ThOrdenable>
+                  <ThOrdenable
+                    clave="monto"
+                    orden={orden}
+                    onAlternar={alternar}
+                    className="text-end"
+                  >
+                    Monto
+                  </ThOrdenable>
+                  <ThOrdenable clave="estado" orden={orden} onAlternar={alternar}>
+                    Estado
+                  </ThOrdenable>
                   <th />
                 </tr>
               </thead>
               <tbody>
-                {recurrencias.map((recurrencia) => (
+                {recurrenciasOrdenadas.map((recurrencia) => (
                   <tr key={recurrencia.id}>
                     <td>
                       {recurrencia.descripcion}
