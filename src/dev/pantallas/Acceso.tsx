@@ -5,8 +5,9 @@ import type { Usuario } from '../../models';
 import { finanzasService } from '../../services';
 import { descargarTexto } from '../../utils/descargas';
 import { formatearCodigoRecuperacion } from '../../utils/criptografia';
-import { AlertaError } from '../componentes/Estado';
-import { mensajeDeError } from '../componentes/mensajes';
+import { mensajeDeError, normalizarError } from '../../utils/errores';
+import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { useErroresFormulario } from '../componentes/useErroresFormulario';
 
 type Modo = 'login' | 'registro' | 'recuperacion' | 'codigo';
 type OrigenCodigo = 'registro' | 'recuperacion';
@@ -18,8 +19,16 @@ interface Props {
 /**
  * Pantalla de acceso de la demo: registro abierto, login y recuperación por
  * código. No hay administrador ni roles.
+ *
+ * En el login nunca se marcan campos concretos: un toast genérico evita
+ * revelar si el correo existe. En registro y recuperación sí se usa la
+ * validación inline porque el usuario está corrigiendo sus propios datos.
  */
 export function Acceso({ onEntrar }: Props) {
+  const notificaciones = useNotificaciones();
+  const { errores, limpiar, limpiarTodo, marcar, manejar } =
+    useErroresFormulario();
+
   const [modo, setModo] = useState<Modo>('login');
   const [nombre, setNombre] = useState('');
   const [correo, setCorreo] = useState('');
@@ -27,8 +36,6 @@ export function Acceso({ onEntrar }: Props) {
   const [confirmacion, setConfirmacion] = useState('');
   const [codigo, setCodigo] = useState('');
   const [nuevaContrasena, setNuevaContrasena] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
 
   const [codigoGenerado, setCodigoGenerado] = useState<string | null>(null);
@@ -41,8 +48,7 @@ export function Acceso({ onEntrar }: Props) {
     setConfirmacion('');
     setNuevaContrasena('');
     setCodigo('');
-    setError(null);
-    setAviso(null);
+    limpiarTodo();
   };
 
   const cambiarModo = (nuevo: Modo) => {
@@ -52,14 +58,15 @@ export function Acceso({ onEntrar }: Props) {
 
   const iniciarSesion = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    setError(null);
+    limpiarTodo();
     setCargando(true);
 
     try {
       const usuario = await finanzasService.iniciarSesion(correo, contrasena);
       onEntrar(usuario);
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      // Sin marcar campos: no se revela si el correo existe o la clave falló.
+      notificaciones.error(normalizarError(fallo).mensaje);
     } finally {
       setCargando(false);
     }
@@ -67,10 +74,10 @@ export function Acceso({ onEntrar }: Props) {
 
   const registrarse = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    setError(null);
+    limpiarTodo();
 
     if (contrasena !== confirmacion) {
-      setError('Las contraseñas no coinciden.');
+      marcar('confirmacion', 'Las contraseñas no coinciden.');
       return;
     }
 
@@ -87,7 +94,7 @@ export function Acceso({ onEntrar }: Props) {
       setCodigoGuardado(false);
       setModo('codigo');
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      manejar(fallo, ['nombre', 'correo', 'contrasena']);
     } finally {
       setCargando(false);
     }
@@ -95,10 +102,10 @@ export function Acceso({ onEntrar }: Props) {
 
   const recuperar = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    setError(null);
+    limpiarTodo();
 
     if (nuevaContrasena !== confirmacion) {
-      setError('Las contraseñas no coinciden.');
+      marcar('confirmacion', 'Las contraseñas no coinciden.');
       return;
     }
 
@@ -114,11 +121,11 @@ export function Acceso({ onEntrar }: Props) {
       setCodigoGuardado(false);
       setUsuarioPendiente(null);
       setModo('codigo');
-      setAviso(
+      notificaciones.exito(
         'Contraseña actualizada. Guarde el código nuevo: el anterior ya no funciona.',
       );
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      manejar(fallo, ['correo', 'codigo', 'contrasena']);
     } finally {
       setCargando(false);
     }
@@ -129,27 +136,34 @@ export function Acceso({ onEntrar }: Props) {
 
     try {
       await navigator.clipboard.writeText(codigoGenerado);
-      setAviso('Código copiado al portapapeles.');
+      notificaciones.exito('Código copiado al portapapeles.');
     } catch {
-      setAviso('No se pudo copiar. Seleccione el código y cópielo manualmente.');
+      notificaciones.aviso(
+        'No se pudo copiar. Seleccione el código y cópielo manualmente.',
+      );
     }
   };
 
   const descargarCodigo = () => {
     if (!codigoGenerado) return;
 
-    descargarTexto(
-      'codigo-recuperacion.txt',
-      [
-        'FinTrack · Código de recuperación',
-        '',
-        `Correo: ${correo}`,
-        `Código: ${codigoGenerado}`,
-        '',
-        'Guarde este código en un lugar seguro. Se muestra una sola vez.',
-        'Sin él no es posible recuperar la contraseña.',
-      ].join('\n'),
-    );
+    try {
+      descargarTexto(
+        'codigo-recuperacion.txt',
+        [
+          'FinTrack · Código de recuperación',
+          '',
+          `Correo: ${correo}`,
+          `Código: ${codigoGenerado}`,
+          '',
+          'Guarde este código en un lugar seguro. Se muestra una sola vez.',
+          'Sin él no es posible recuperar la contraseña.',
+        ].join('\n'),
+      );
+      notificaciones.exito('Código descargado como archivo de texto.');
+    } catch (fallo) {
+      notificaciones.error(mensajeDeError(fallo));
+    }
   };
 
   const continuarTrasCodigo = () => {
@@ -165,7 +179,7 @@ export function Acceso({ onEntrar }: Props) {
     setNuevaContrasena('');
     setCodigo('');
     setModo('login');
-    setAviso('Inicie sesión con su nueva contraseña.');
+    notificaciones.info('Inicie sesión con su nueva contraseña.');
   };
 
   return (
@@ -180,23 +194,12 @@ export function Acceso({ onEntrar }: Props) {
             </p>
           </div>
 
-          <AlertaError mensaje={error} onCerrar={() => setError(null)} />
-          {aviso && (
-            <Alert
-              variant="info"
-              dismissible
-              onClose={() => setAviso(null)}
-            >
-              {aviso}
-            </Alert>
-          )}
-
           <Card className="shadow-sm">
             <Card.Body className="p-4">
               {modo === 'login' && (
                 <>
                   <Card.Title className="h5 mb-3">Iniciar sesión</Card.Title>
-                  <Form onSubmit={iniciarSesion}>
+                  <Form onSubmit={iniciarSesion} noValidate>
                     <Form.Group className="mb-3" controlId="login-correo">
                       <Form.Label>Correo</Form.Label>
                       <Form.Control
@@ -246,14 +249,21 @@ export function Acceso({ onEntrar }: Props) {
               {modo === 'registro' && (
                 <>
                   <Card.Title className="h5 mb-3">Crear cuenta</Card.Title>
-                  <Form onSubmit={registrarse}>
+                  <Form onSubmit={registrarse} noValidate>
                     <Form.Group className="mb-3" controlId="registro-nombre">
                       <Form.Label>Nombre completo</Form.Label>
                       <Form.Control
                         value={nombre}
                         required
-                        onChange={(evento) => setNombre(evento.target.value)}
+                        isInvalid={Boolean(errores.nombre)}
+                        onChange={(evento) => {
+                          setNombre(evento.target.value);
+                          limpiar('nombre');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.nombre}
+                      </Form.Control.Feedback>
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="registro-correo">
                       <Form.Label>Correo</Form.Label>
@@ -262,8 +272,15 @@ export function Acceso({ onEntrar }: Props) {
                         autoComplete="username"
                         value={correo}
                         required
-                        onChange={(evento) => setCorreo(evento.target.value)}
+                        isInvalid={Boolean(errores.correo)}
+                        onChange={(evento) => {
+                          setCorreo(evento.target.value);
+                          limpiar('correo');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.correo}
+                      </Form.Control.Feedback>
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="registro-contrasena">
                       <Form.Label>Contraseña</Form.Label>
@@ -273,9 +290,16 @@ export function Acceso({ onEntrar }: Props) {
                         value={contrasena}
                         required
                         minLength={8}
-                        onChange={(evento) => setContrasena(evento.target.value)}
+                        isInvalid={Boolean(errores.contrasena)}
+                        onChange={(evento) => {
+                          setContrasena(evento.target.value);
+                          limpiar('contrasena');
+                        }}
                       />
                       <Form.Text>Mínimo 8 caracteres.</Form.Text>
+                      <Form.Control.Feedback type="invalid">
+                        {errores.contrasena}
+                      </Form.Control.Feedback>
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="registro-confirmacion">
                       <Form.Label>Confirmar contraseña</Form.Label>
@@ -284,8 +308,15 @@ export function Acceso({ onEntrar }: Props) {
                         autoComplete="new-password"
                         value={confirmacion}
                         required
-                        onChange={(evento) => setConfirmacion(evento.target.value)}
+                        isInvalid={Boolean(errores.confirmacion)}
+                        onChange={(evento) => {
+                          setConfirmacion(evento.target.value);
+                          limpiar('confirmacion');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.confirmacion}
+                      </Form.Control.Feedback>
                     </Form.Group>
                     <Button type="submit" className="w-100" disabled={cargando}>
                       {cargando ? 'Creando cuenta…' : 'Crear cuenta'}
@@ -306,15 +337,22 @@ export function Acceso({ onEntrar }: Props) {
               {modo === 'recuperacion' && (
                 <>
                   <Card.Title className="h5 mb-3">Recuperar contraseña</Card.Title>
-                  <Form onSubmit={recuperar}>
+                  <Form onSubmit={recuperar} noValidate>
                     <Form.Group className="mb-3" controlId="recuperar-correo">
                       <Form.Label>Correo</Form.Label>
                       <Form.Control
                         type="email"
                         value={correo}
                         required
-                        onChange={(evento) => setCorreo(evento.target.value)}
+                        isInvalid={Boolean(errores.correo)}
+                        onChange={(evento) => {
+                          setCorreo(evento.target.value);
+                          limpiar('correo');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.correo}
+                      </Form.Control.Feedback>
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="recuperar-codigo">
                       <Form.Label>Código de recuperación</Form.Label>
@@ -322,8 +360,15 @@ export function Acceso({ onEntrar }: Props) {
                         value={codigo}
                         required
                         placeholder="XXXX-XXXX-XXXX"
-                        onChange={(evento) => setCodigo(evento.target.value)}
+                        isInvalid={Boolean(errores.codigo)}
+                        onChange={(evento) => {
+                          setCodigo(evento.target.value);
+                          limpiar('codigo');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.codigo}
+                      </Form.Control.Feedback>
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="recuperar-nueva">
                       <Form.Label>Nueva contraseña</Form.Label>
@@ -333,8 +378,15 @@ export function Acceso({ onEntrar }: Props) {
                         value={nuevaContrasena}
                         required
                         minLength={8}
-                        onChange={(evento) => setNuevaContrasena(evento.target.value)}
+                        isInvalid={Boolean(errores.contrasena)}
+                        onChange={(evento) => {
+                          setNuevaContrasena(evento.target.value);
+                          limpiar('contrasena');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.contrasena}
+                      </Form.Control.Feedback>
                     </Form.Group>
                     <Form.Group className="mb-3" controlId="recuperar-confirmacion">
                       <Form.Label>Confirmar nueva contraseña</Form.Label>
@@ -343,8 +395,15 @@ export function Acceso({ onEntrar }: Props) {
                         autoComplete="new-password"
                         value={confirmacion}
                         required
-                        onChange={(evento) => setConfirmacion(evento.target.value)}
+                        isInvalid={Boolean(errores.confirmacion)}
+                        onChange={(evento) => {
+                          setConfirmacion(evento.target.value);
+                          limpiar('confirmacion');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.confirmacion}
+                      </Form.Control.Feedback>
                     </Form.Group>
                     <Button type="submit" className="w-100" disabled={cargando}>
                       {cargando ? 'Verificando…' : 'Recuperar acceso'}

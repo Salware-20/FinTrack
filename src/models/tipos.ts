@@ -1,12 +1,13 @@
-/**
+﻿/**
  * Tipos, constantes y estructuras de datos del dominio financiero.
  *
  * Nota: el proyecto compila con `erasableSyntaxOnly`, por lo que NO se usan
  * `enum` de TypeScript. En su lugar se emplean objetos `as const` con un tipo
- * unión equivalente, que además funcionan como valores en tiempo de ejecución
- * (útiles para llenar selects y validar formularios).
+ * uniÃ³n equivalente, que ademÃ¡s funcionan como valores en tiempo de ejecuciÃ³n
+ * (Ãºtiles para llenar selects y validar formularios).
  */
 
+import type { Recurrencia } from './Recurrencia';
 import type { Usuario } from './Usuario';
 
 export const TipoTransaccion = {
@@ -16,7 +17,7 @@ export const TipoTransaccion = {
 
 export type TipoTransaccion = (typeof TipoTransaccion)[keyof typeof TipoTransaccion];
 
-/** Lista de tipos válidos, lista para recorrer en la interfaz. */
+/** Lista de tipos vÃ¡lidos, lista para recorrer en la interfaz. */
 export const TIPOS_TRANSACCION: readonly TipoTransaccion[] = [
   TipoTransaccion.Ingreso,
   TipoTransaccion.Gasto,
@@ -48,7 +49,7 @@ export const MetodoPago = {
 
 export type MetodoPago = (typeof MetodoPago)[keyof typeof MetodoPago];
 
-/** Lista de métodos de pago válidos, lista para recorrer en la interfaz. */
+/** Lista de mÃ©todos de pago vÃ¡lidos, lista para recorrer en la interfaz. */
 export const METODOS_PAGO: readonly MetodoPago[] = [
   MetodoPago.Efectivo,
   MetodoPago.Tarjeta,
@@ -69,6 +70,22 @@ export const ESTADOS_TRANSACCION: readonly EstadoTransaccion[] = [
   EstadoTransaccion.Pendiente,
 ];
 
+export const FrecuenciaRecurrencia = {
+  Diaria: 'diaria',
+  Semanal: 'semanal',
+  Mensual: 'mensual',
+} as const;
+
+export type FrecuenciaRecurrencia =
+  (typeof FrecuenciaRecurrencia)[keyof typeof FrecuenciaRecurrencia];
+
+/** Frecuencias vÃ¡lidas, lista para recorrer en la interfaz. */
+export const FRECUENCIAS_RECURRENCIA: readonly FrecuenciaRecurrencia[] = [
+  FrecuenciaRecurrencia.Diaria,
+  FrecuenciaRecurrencia.Semanal,
+  FrecuenciaRecurrencia.Mensual,
+];
+
 export const OrdenTransacciones = {
   FechaDesc: 'fecha-desc',
   FechaAsc: 'fecha-asc',
@@ -78,24 +95,31 @@ export const OrdenTransacciones = {
 
 export type OrdenTransacciones = (typeof OrdenTransacciones)[keyof typeof OrdenTransacciones];
 
-/** Verifica en tiempo de ejecución si un valor es un tipo de transacción. */
+/** Verifica en tiempo de ejecuciÃ³n si un valor es un tipo de transacciÃ³n. */
 export function esTipoTransaccion(valor: unknown): valor is TipoTransaccion {
   return valor === TipoTransaccion.Ingreso || valor === TipoTransaccion.Gasto;
 }
 
-/** Verifica en tiempo de ejecución si un valor es un tipo de cuenta. */
+/** Verifica en tiempo de ejecuciÃ³n si un valor es un tipo de cuenta. */
 export function esTipoCuenta(valor: unknown): valor is TipoCuenta {
   return TIPOS_CUENTA.includes(valor as TipoCuenta);
 }
 
-/** Verifica en tiempo de ejecución si un valor es un método de pago válido. */
+/** Verifica en tiempo de ejecuciÃ³n si un valor es un mÃ©todo de pago vÃ¡lido. */
 export function esMetodoPago(valor: unknown): valor is MetodoPago {
   return METODOS_PAGO.includes(valor as MetodoPago);
 }
 
-/** Verifica en tiempo de ejecución si un valor es un estado de transacción. */
+/** Verifica en tiempo de ejecuciÃ³n si un valor es un estado de transacciÃ³n. */
 export function esEstadoTransaccion(valor: unknown): valor is EstadoTransaccion {
   return ESTADOS_TRANSACCION.includes(valor as EstadoTransaccion);
+}
+
+/** Verifica en tiempo de ejecuciÃ³n si un valor es una frecuencia recurrente. */
+export function esFrecuenciaRecurrencia(
+  valor: unknown,
+): valor is FrecuenciaRecurrencia {
+  return FRECUENCIAS_RECURRENCIA.includes(valor as FrecuenciaRecurrencia);
 }
 
 /** Datos para crear una cuenta. */
@@ -126,13 +150,13 @@ export interface NuevoUsuario {
   contrasena: string;
 }
 
-/** Resultado del registro: incluye el código de recuperación en claro (una sola vez). */
+/** Resultado del registro: incluye el cÃ³digo de recuperaciÃ³n en claro (una sola vez). */
 export interface ResultadoRegistro {
   usuario: Usuario;
   codigoRecuperacion: string;
 }
 
-/** Resultado de recuperar la contraseña: el código anterior se reemplaza. */
+/** Resultado de recuperar la contraseÃ±a: el cÃ³digo anterior se reemplaza. */
 export interface ResultadoRecuperacion {
   usuario: Usuario;
   codigoRecuperacion: string;
@@ -144,6 +168,45 @@ export interface ConfiguracionUsuario {
   moneda: string;
   locale: string;
   tema: 'claro' | 'oscuro';
+  /** Meta de ahorro mensual; 0 o ausente significa sin meta configurada. */
+  metaAhorroMensual?: number;
+}
+
+/** Estado de la alerta de un presupuesto. */
+export const EstadoAlertaPresupuesto = {
+  Normal: 'normal',
+  Advertencia: 'advertencia',
+  Excedido: 'excedido',
+} as const;
+
+export type EstadoAlertaPresupuesto =
+  (typeof EstadoAlertaPresupuesto)[keyof typeof EstadoAlertaPresupuesto];
+
+/** Situacion calculada de un presupuesto para un periodo concreto. */
+export interface EstadoPresupuesto {
+  presupuestoId: string;
+  categoriaId: string;
+  categoriaNombre: string;
+  montoLimite: number;
+  montoGastado: number;
+  montoDisponible: number;
+  /** Porcentaje de consumo respecto al limite (0-100+). */
+  porcentajeConsumido: number;
+  estadoAlerta: EstadoAlertaPresupuesto;
+}
+
+/**
+ * Categoria que absorbe el umbral % o mas del gasto total del periodo.
+ * Se genera automaticamente sin configurar un limite manual.
+ */
+export interface AlertaConcentracionGasto {
+  categoriaId: string;
+  categoriaNombre: string;
+  montoGastado: number;
+  /** Porcentaje que representa del gasto total del periodo. */
+  porcentajeDelTotal: number;
+  /** Umbral utilizado para detectar la alerta (por defecto 30). */
+  umbral: number;
 }
 
 /** Filtros aceptados por las consultas del servicio de finanzas. */
@@ -157,13 +220,13 @@ export interface FiltroTransacciones {
   cuentaId?: string;
   metodoPago?: MetodoPago;
   estado?: EstadoTransaccion;
-  /** Búsqueda libre sobre la descripción, la categoría y las etiquetas. */
+  /** BÃºsqueda libre sobre la descripciÃ³n, la categorÃ­a y las etiquetas. */
   texto?: string;
-  /** Orden de los resultados. Por defecto: fecha más reciente primero. */
+  /** Orden de los resultados. Por defecto: fecha mÃ¡s reciente primero. */
   orden?: OrdenTransacciones;
 }
 
-/** Datos necesarios para registrar una transacción nueva. */
+/** Datos necesarios para registrar una transacciÃ³n nueva. */
 export interface NuevaTransaccion {
   /** Siempre positivo; el signo lo define `tipo`. */
   monto: number;
@@ -181,15 +244,63 @@ export interface NuevaTransaccion {
   etiquetas?: string[];
 }
 
-/** Datos necesarios para crear una categoría. */
+/** Datos necesarios para crear una regla de movimiento recurrente. */
+export interface NuevaRecurrencia {
+  /** Siempre positivo; el signo lo define `tipo`. */
+  monto: number;
+  tipo: TipoTransaccion;
+  /** Primera fecha de la serie, formato AAAA-MM-DD. */
+  fechaInicio: string;
+  descripcion: string;
+  categoriaId: string;
+  cuentaId: string;
+  frecuencia: FrecuenciaRecurrencia;
+  /** Ãšltima fecha permitida; `null` o vacÃ­o significa sin fin. */
+  fechaFin?: string | null;
+  /** Si se omite, se usa "otro". */
+  metodoPago?: MetodoPago;
+  etiquetas?: string[];
+}
+
+/** Cambios admitidos en una regla recurrente ya creada. */
+export interface CambiosRecurrencia {
+  activa?: boolean;
+  fechaFin?: string | null;
+}
+
+/** Cambios admitidos en un presupuesto. */
+export interface CambiosPresupuesto {
+  montoLimite?: number;
+  periodo?: string | null;
+  alertaPorcentaje?: number;
+  activo?: boolean;
+}
+
+/** Datos necesarios para crear un presupuesto nuevo. */
+export interface NuevoPresupuesto {
+  categoriaId: string;
+  montoLimite: number;
+  periodo?: string | null;
+  alertaPorcentaje?: number;
+  activo?: boolean;
+}
+
+/** Resultado de crear una regla y generar sus ocurrencias vencidas. */
+export interface ResultadoCreacionRecurrencia {
+  recurrencia: Recurrencia;
+  /** Ocurrencias reales generadas hasta hoy (nunca fechas futuras). */
+  generadas: number;
+}
+
+/** Datos necesarios para crear una categorÃ­a. */
 export interface NuevaCategoria {
   nombre: string;
   tipo: TipoTransaccion;
-  /** Categoría padre para subcategorías; null o vacío para raíz. */
+  /** CategorÃ­a padre para subcategorÃ­as; null o vacÃ­o para raÃ­z. */
   padreId?: string | null;
   /** Color hexadecimal; si se omite se usa el color por defecto. */
   color?: string;
-  /** Emoji o texto corto; si se omite se usa un ícono genérico. */
+  /** Emoji o texto corto; si se omite se usa un Ã­cono genÃ©rico. */
   icono?: string;
 }
 
@@ -204,7 +315,7 @@ export interface SaldoCuenta {
   saldo: number;
 }
 
-/** Acumulado de una categoría dentro de un resumen financiero. */
+/** Acumulado de una categorÃ­a dentro de un resumen financiero. */
 export interface ResumenPorCategoria {
   categoriaId: string;
   nombre: string;
@@ -226,7 +337,7 @@ export interface ResumenMensual {
   balance: number;
 }
 
-/** Resumen financiero listo para tarjetas y gráficos. */
+/** Resumen financiero listo para tarjetas y grÃ¡ficos. */
 export interface ResumenFinanciero {
   totalIngresos: number;
   totalGastos: number;
@@ -235,12 +346,12 @@ export interface ResumenFinanciero {
   cantidadTransacciones: number;
   cantidadIngresos: number;
   cantidadGastos: number;
-  /** Promedio por transacción; 0 si no hay movimientos del tipo. */
+  /** Promedio por transacciÃ³n; 0 si no hay movimientos del tipo. */
   promedioIngreso: number;
   promedioGasto: number;
-  /** Desglose por categoría, ordenado de mayor a menor monto. */
+  /** Desglose por categorÃ­a, ordenado de mayor a menor monto. */
   porCategoria: ResumenPorCategoria[];
-  /** Evolución mensual, ordenada del mes más antiguo al más reciente. */
+  /** EvoluciÃ³n mensual, ordenada del mes mÃ¡s antiguo al mÃ¡s reciente. */
   porMes: ResumenMensual[];
   /** Rango real de fechas cubierto por las transacciones consideradas. */
   rango: {

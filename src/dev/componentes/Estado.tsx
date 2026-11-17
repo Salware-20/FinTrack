@@ -1,4 +1,4 @@
-import { Alert, Spinner } from 'react-bootstrap';
+import { Alert, Button, Spinner } from 'react-bootstrap';
 
 /** Spinner centrado para estados de carga. */
 export function Cargando({ texto = 'Cargando datos…' }: { texto?: string }) {
@@ -10,19 +10,35 @@ export function Cargando({ texto = 'Cargando datos…' }: { texto?: string }) {
   );
 }
 
-/** Alerta de error cerrable. */
-export function AlertaError({
+/**
+ * Alerta para errores que impiden cargar una pantalla.
+ *
+ * Es la única alerta inline de error del Nivel B: lleva reintento porque sin
+ * los datos no hay nada que el usuario pueda hacer en esa sección.
+ */
+export function AlertaErrorCarga({
   mensaje,
-  onCerrar,
+  onReintentar,
 }: {
   mensaje: string | null;
-  onCerrar?: () => void;
+  onReintentar: () => void;
 }) {
   if (!mensaje) return null;
 
   return (
-    <Alert variant="danger" dismissible={Boolean(onCerrar)} onClose={onCerrar}>
-      {mensaje}
+    <Alert
+      variant="danger"
+      className="d-flex flex-wrap justify-content-between align-items-center gap-3"
+    >
+      <div>
+        <Alert.Heading className="h6 mb-1">
+          No se pudieron cargar los datos
+        </Alert.Heading>
+        <div>{mensaje}</div>
+      </div>
+      <Button variant="outline-danger" size="sm" onClick={onReintentar}>
+        Reintentar
+      </Button>
     </Alert>
   );
 }

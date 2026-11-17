@@ -19,8 +19,10 @@ import {
   formatearTipoCuenta,
 } from '../../utils/formato';
 import { sumarMontos } from '../../utils/numeros';
-import { AlertaError, Cargando } from '../componentes/Estado';
-import { mensajeDeError } from '../componentes/mensajes';
+import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
+import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { useErroresFormulario } from '../componentes/useErroresFormulario';
+import { mensajeDeError } from '../../utils/errores';
 
 interface DatosCuentas {
   cuentas: Cuenta[];
@@ -61,16 +63,32 @@ const FORMULARIO_TRANSFERENCIA = {
   descripcion: '',
 };
 
+const CAMPOS_CUENTA = ['nombre', 'saldoInicial'] as const;
+const CAMPOS_TRANSFERENCIA = [
+  'cuentaOrigenId',
+  'cuentaDestinoId',
+  'monto',
+  'fecha',
+] as const;
+
 /**
  * Pantalla de cuentas de la demo: saldos calculados, alta de cuentas,
  * archivado y transferencias entre cuentas del mismo usuario.
  */
 export function Cuentas() {
+  const notificaciones = useNotificaciones();
+  const {
+    errores,
+    limpiar,
+    limpiarTodo,
+    marcar,
+    manejar,
+  } = useErroresFormulario();
+
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
   const [saldos, setSaldos] = useState<SaldoCuenta[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
   const [version, setVersion] = useState(0);
 
@@ -100,10 +118,11 @@ export function Cuentas() {
             '',
         }));
         setCargando(false);
+        setErrorCarga(null);
       })
       .catch((fallo: unknown) => {
         if (!activo) return;
-        setError(mensajeDeError(fallo));
+        setErrorCarga(mensajeDeError(fallo));
         setCargando(false);
       });
 
@@ -114,10 +133,15 @@ export function Cuentas() {
 
   const recargar = () => setVersion((actual) => actual + 1);
 
+  const reintentarCarga = () => {
+    setErrorCarga(null);
+    setCargando(true);
+    recargar();
+  };
+
   const crearCuenta = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    setError(null);
-    setAviso(null);
+    limpiarTodo();
     setGuardando(true);
 
     try {
@@ -133,26 +157,25 @@ export function Cuentas() {
       });
       setFormularioCuenta({ ...FORMULARIO_CUENTA });
       setMostrarCuenta(false);
-      setAviso('Cuenta creada.');
+      limpiarTodo();
+      notificaciones.exito('Cuenta creada.');
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      manejar(fallo, CAMPOS_CUENTA);
     } finally {
       setGuardando(false);
     }
   };
 
   const alternarArchivo = async (cuenta: Cuenta) => {
-    setError(null);
-    setAviso(null);
     setGuardando(true);
 
     try {
       await finanzasService.actualizarCuenta(cuenta.id, { activa: !cuenta.activa });
-      setAviso(cuenta.activa ? 'Cuenta archivada.' : 'Cuenta reactivada.');
+      notificaciones.exito(cuenta.activa ? 'Cuenta archivada.' : 'Cuenta reactivada.');
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
     } finally {
       setGuardando(false);
     }
@@ -160,11 +183,13 @@ export function Cuentas() {
 
   const transferir = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    setError(null);
-    setAviso(null);
+    limpiarTodo();
 
     if (formularioTransferencia.cuentaOrigenId === formularioTransferencia.cuentaDestinoId) {
-      setError('La cuenta de origen y la de destino deben ser diferentes.');
+      marcar(
+        'cuentaDestinoId',
+        'La cuenta de origen y la de destino deben ser diferentes.',
+      );
       return;
     }
 
@@ -183,10 +208,13 @@ export function Cuentas() {
         descripcion: '',
       }));
       setMostrarTransferencia(false);
-      setAviso('Transferencia registrada. No afecta los reportes de ingreso y gasto.');
+      limpiarTodo();
+      notificaciones.exito(
+        'Transferencia registrada. No afecta los reportes de ingreso y gasto.',
+      );
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      manejar(fallo, CAMPOS_TRANSFERENCIA);
     } finally {
       setGuardando(false);
     }
@@ -216,22 +244,23 @@ export function Cuentas() {
         <div className="d-flex flex-wrap gap-2">
           <Button
             variant="outline-secondary"
-            onClick={() => setMostrarTransferencia((visible) => !visible)}
+            onClick={() => {
+              limpiarTodo();
+              setMostrarTransferencia((visible) => !visible);
+            }}
           >
             Transferir entre cuentas
           </Button>
-          <Button onClick={() => setMostrarCuenta((visible) => !visible)}>
+          <Button onClick={() => {
+            limpiarTodo();
+            setMostrarCuenta((visible) => !visible);
+          }}>
             {mostrarCuenta ? 'Cerrar formulario' : '+ Nueva cuenta'}
           </Button>
         </div>
       </div>
 
-      <AlertaError mensaje={error} onCerrar={() => setError(null)} />
-      {aviso && (
-        <Alert variant="success" dismissible onClose={() => setAviso(null)}>
-          {aviso}
-        </Alert>
-      )}
+      <AlertaErrorCarga mensaje={errorCarga} onReintentar={reintentarCarga} />
 
       <Row className="g-3 mb-4">
         <Col xs={12} md={4}>
@@ -273,7 +302,7 @@ export function Cuentas() {
         <Card className="mb-4">
           <Card.Body>
             <Card.Title className="h5 mb-3">Nueva cuenta</Card.Title>
-            <Form onSubmit={crearCuenta}>
+            <Form onSubmit={crearCuenta} noValidate>
               <Row className="g-3">
                 <Col xs={12} md={4}>
                   <Form.Group controlId="cuenta-nombre">
@@ -282,13 +311,18 @@ export function Cuentas() {
                       value={formularioCuenta.nombre}
                       required
                       placeholder="Ejemplo: BAC Credomatic"
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.nombre)}
+                      onChange={(evento) => {
                         setFormularioCuenta((previo) => ({
                           ...previo,
                           nombre: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('nombre');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.nombre}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={4}>
@@ -319,13 +353,18 @@ export function Cuentas() {
                       step="0.01"
                       value={formularioCuenta.saldoInicial}
                       placeholder="0"
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.saldoInicial)}
+                      onChange={(evento) => {
                         setFormularioCuenta((previo) => ({
                           ...previo,
                           saldoInicial: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('saldoInicial');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.saldoInicial}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={4}>
@@ -398,7 +437,7 @@ export function Cuentas() {
                 Necesita al menos dos cuentas activas para transferir.
               </Alert>
             ) : (
-              <Form onSubmit={transferir}>
+              <Form onSubmit={transferir} noValidate>
                 <Row className="g-3">
                   <Col xs={12} md={3}>
                     <Form.Group controlId="trf-origen">
@@ -406,12 +445,15 @@ export function Cuentas() {
                       <Form.Select
                         value={formularioTransferencia.cuentaOrigenId}
                         required
-                        onChange={(evento) =>
+                        isInvalid={Boolean(errores.cuentaOrigenId)}
+                        onChange={(evento) => {
                           setFormularioTransferencia((previo) => ({
                             ...previo,
                             cuentaOrigenId: evento.target.value,
-                          }))
-                        }
+                          }));
+                          limpiar('cuentaOrigenId');
+                          limpiar('cuentaDestinoId');
+                        }}
                       >
                         {activas.map((cuenta) => (
                           <option key={cuenta.id} value={cuenta.id}>
@@ -419,6 +461,9 @@ export function Cuentas() {
                           </option>
                         ))}
                       </Form.Select>
+                      <Form.Control.Feedback type="invalid">
+                        {errores.cuentaOrigenId}
+                      </Form.Control.Feedback>
                     </Form.Group>
                   </Col>
                   <Col xs={12} md={3}>
@@ -427,12 +472,14 @@ export function Cuentas() {
                       <Form.Select
                         value={formularioTransferencia.cuentaDestinoId}
                         required
-                        onChange={(evento) =>
+                        isInvalid={Boolean(errores.cuentaDestinoId)}
+                        onChange={(evento) => {
                           setFormularioTransferencia((previo) => ({
                             ...previo,
                             cuentaDestinoId: evento.target.value,
-                          }))
-                        }
+                          }));
+                          limpiar('cuentaDestinoId');
+                        }}
                       >
                         {activas
                           .filter(
@@ -445,6 +492,9 @@ export function Cuentas() {
                             </option>
                           ))}
                       </Form.Select>
+                      <Form.Control.Feedback type="invalid">
+                        {errores.cuentaDestinoId}
+                      </Form.Control.Feedback>
                     </Form.Group>
                   </Col>
                   <Col xs={6} md={2}>
@@ -456,13 +506,18 @@ export function Cuentas() {
                         step="0.01"
                         value={formularioTransferencia.monto}
                         required
-                        onChange={(evento) =>
+                        isInvalid={Boolean(errores.monto)}
+                        onChange={(evento) => {
                           setFormularioTransferencia((previo) => ({
                             ...previo,
                             monto: evento.target.value,
-                          }))
-                        }
+                          }));
+                          limpiar('monto');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.monto}
+                      </Form.Control.Feedback>
                     </Form.Group>
                   </Col>
                   <Col xs={6} md={2}>
@@ -472,13 +527,18 @@ export function Cuentas() {
                         type="date"
                         value={formularioTransferencia.fecha}
                         required
-                        onChange={(evento) =>
+                        isInvalid={Boolean(errores.fecha)}
+                        onChange={(evento) => {
                           setFormularioTransferencia((previo) => ({
                             ...previo,
                             fecha: evento.target.value,
-                          }))
-                        }
+                          }));
+                          limpiar('fecha');
+                        }}
                       />
+                      <Form.Control.Feedback type="invalid">
+                        {errores.fecha}
+                      </Form.Control.Feedback>
                     </Form.Group>
                   </Col>
                   <Col xs={12} md={2}>
@@ -504,7 +564,10 @@ export function Cuentas() {
                   <Button
                     type="button"
                     variant="outline-secondary"
-                    onClick={() => setMostrarTransferencia(false)}
+                    onClick={() => {
+                      limpiarTodo();
+                      setMostrarTransferencia(false);
+                    }}
                   >
                     Cancelar
                   </Button>

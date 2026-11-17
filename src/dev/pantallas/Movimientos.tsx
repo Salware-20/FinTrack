@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
-  Alert,
   Badge,
   Button,
   Card,
@@ -10,8 +9,14 @@ import {
   Row,
   Table,
 } from 'react-bootstrap';
-import type { Categoria, Cuenta, Transaccion } from '../../models';
-import { EstadoTransaccion, MetodoPago, TipoTransaccion } from '../../models';
+import type { Categoria, Cuenta, Recurrencia, Transaccion } from '../../models';
+import {
+  EstadoTransaccion,
+  FRECUENCIAS_RECURRENCIA,
+  FrecuenciaRecurrencia,
+  MetodoPago,
+  TipoTransaccion,
+} from '../../models';
 import type { FiltroTransacciones } from '../../models/tipos';
 import { finanzasService } from '../../services';
 import {
@@ -22,25 +27,34 @@ import {
   formatearMetodoPago,
   formatearMoneda,
 } from '../../utils/formato';
-import { AlertaError, Cargando } from '../componentes/Estado';
-import { mensajeDeError } from '../componentes/mensajes';
+import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
+import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { TablaRecurrencias } from '../componentes/TablaRecurrencias';
+import { useErroresFormulario } from '../componentes/useErroresFormulario';
+import { mensajeDeError } from '../../utils/errores';
 
 interface DatosMovimientos {
   transacciones: Transaccion[];
   categorias: Categoria[];
   cuentas: Cuenta[];
+  recurrencias: Recurrencia[];
 }
 
 async function consultarMovimientos(
   filtro: FiltroTransacciones,
 ): Promise<DatosMovimientos> {
-  const [transacciones, categorias, cuentas] = await Promise.all([
+  // Genera primero las ocurrencias vencidas para que la tabla y los saldos
+  // reflejen los movimientos recurrentes del día.
+  await finanzasService.procesarRecurrencias();
+
+  const [transacciones, categorias, cuentas, recurrencias] = await Promise.all([
     finanzasService.listarTransacciones(filtro),
     finanzasService.listarCategorias(),
     finanzasService.listarCuentas(),
+    finanzasService.listarRecurrencias(),
   ]);
 
-  return { transacciones, categorias, cuentas };
+  return { transacciones, categorias, cuentas, recurrencias };
 }
 
 interface FormularioMovimiento {
@@ -53,6 +67,10 @@ interface FormularioMovimiento {
   metodoPago: MetodoPago;
   estado: EstadoTransaccion;
   etiquetas: string;
+  /** Si está activo, el movimiento se guarda como regla recurrente. */
+  repetir: boolean;
+  frecuencia: FrecuenciaRecurrencia;
+  fechaFin: string;
 }
 
 const FORMULARIO_INICIAL: FormularioMovimiento = {
@@ -65,15 +83,31 @@ const FORMULARIO_INICIAL: FormularioMovimiento = {
   metodoPago: MetodoPago.Efectivo,
   estado: EstadoTransaccion.Confirmado,
   etiquetas: '',
+  repetir: false,
+  frecuencia: FrecuenciaRecurrencia.Mensual,
+  fechaFin: '',
 };
 
+const CAMPOS_MOVIMIENTO = [
+  'monto',
+  'fecha',
+  'descripcion',
+  'categoriaId',
+  'cuentaId',
+  'fechaFin',
+] as const;
+
 export function Movimientos() {
+  const notificaciones = useNotificaciones();
+  const { errores, limpiar, limpiarTodo, marcar, manejar } =
+    useErroresFormulario();
+
   const [transacciones, setTransacciones] = useState<Transaccion[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [cuentas, setCuentas] = useState<Cuenta[]>([]);
+  const [recurrencias, setRecurrencias] = useState<Recurrencia[]>([]);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
 
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroCuenta, setFiltroCuenta] = useState('');
@@ -98,6 +132,7 @@ export function Movimientos() {
         setTransacciones(datos.transacciones);
         setCategorias(datos.categorias);
         setCuentas(datos.cuentas);
+        setRecurrencias(datos.recurrencias);
         setFormulario((previo) => ({
           ...previo,
           cuentaId: previo.cuentaId || datos.cuentas[0]?.id || '',
@@ -107,10 +142,11 @@ export function Movimientos() {
             '',
         }));
         setCargando(false);
+        setErrorCarga(null);
       })
       .catch((fallo: unknown) => {
         if (!activo) return;
-        setError(mensajeDeError(fallo));
+        setErrorCarga(mensajeDeError(fallo));
         setCargando(false);
       });
 
@@ -121,12 +157,19 @@ export function Movimientos() {
 
   const recargar = () => setVersion((actual) => actual + 1);
 
+  const reintentarCarga = () => {
+    setErrorCarga(null);
+    setCargando(true);
+    recargar();
+  };
+
   const categoriasDelTipo = categorias.filter(
     (categoria) => categoria.tipo === formulario.tipo,
   );
 
   const cambiarTipo = (tipo: TipoTransaccion) => {
     const primera = categorias.find((categoria) => categoria.tipo === tipo);
+    limpiar('categoriaId');
     setFormulario((previo) => ({
       ...previo,
       tipo,
@@ -136,41 +179,84 @@ export function Movimientos() {
 
   const guardar = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault();
-    setError(null);
-    setAviso(null);
+    limpiarTodo();
 
-    if (!formulario.cuentaId || !formulario.categoriaId) {
-      setError('Seleccione una cuenta y una categoría.');
+    if (!formulario.cuentaId) {
+      marcar('cuentaId', 'Seleccione una cuenta.');
+      return;
+    }
+    if (!formulario.categoriaId) {
+      marcar('categoriaId', 'Seleccione una categoría.');
+      return;
+    }
+    if (
+      formulario.repetir &&
+      formulario.fechaFin &&
+      formulario.fechaFin < formulario.fecha
+    ) {
+      marcar(
+        'fechaFin',
+        'La fecha final no puede ser anterior a la fecha de inicio.',
+      );
       return;
     }
 
+    const etiquetas = formulario.etiquetas
+      .split(',')
+      .map((etiqueta) => etiqueta.trim())
+      .filter((etiqueta) => etiqueta.length > 0);
+
     setGuardando(true);
     try {
-      await finanzasService.crearTransaccion({
-        monto: Number(formulario.monto),
-        tipo: formulario.tipo,
-        fecha: formulario.fecha,
-        descripcion: formulario.descripcion,
-        categoriaId: formulario.categoriaId,
-        cuentaId: formulario.cuentaId,
-        metodoPago: formulario.metodoPago,
-        estado: formulario.estado,
-        etiquetas: formulario.etiquetas
-          .split(',')
-          .map((etiqueta) => etiqueta.trim())
-          .filter((etiqueta) => etiqueta.length > 0),
-      });
+      if (formulario.repetir) {
+        const resultado = await finanzasService.crearRecurrencia({
+          monto: Number(formulario.monto),
+          tipo: formulario.tipo,
+          fechaInicio: formulario.fecha,
+          descripcion: formulario.descripcion,
+          categoriaId: formulario.categoriaId,
+          cuentaId: formulario.cuentaId,
+          metodoPago: formulario.metodoPago,
+          etiquetas,
+          frecuencia: formulario.frecuencia,
+          fechaFin: formulario.fechaFin || null,
+        });
+
+        notificaciones.exito(
+          resultado.generadas === 0
+            ? `Recurrencia programada. El primer movimiento se registrará el ${formatearFecha(resultado.recurrencia.proximaFecha)}.`
+            : resultado.generadas === 1
+              ? 'Recurrencia creada. Se generó 1 movimiento.'
+              : `Recurrencia creada. Se generaron ${resultado.generadas} movimientos.`,
+        );
+      } else {
+        await finanzasService.crearTransaccion({
+          monto: Number(formulario.monto),
+          tipo: formulario.tipo,
+          fecha: formulario.fecha,
+          descripcion: formulario.descripcion,
+          categoriaId: formulario.categoriaId,
+          cuentaId: formulario.cuentaId,
+          metodoPago: formulario.metodoPago,
+          estado: formulario.estado,
+          etiquetas,
+        });
+        notificaciones.exito('Movimiento registrado.');
+      }
+
       setFormulario((previo) => ({
         ...previo,
         monto: '',
         descripcion: '',
         etiquetas: '',
+        repetir: false,
+        fechaFin: '',
       }));
       setMostrarFormulario(false);
-      setAviso('Movimiento registrado.');
+      limpiarTodo();
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      manejar(fallo, CAMPOS_MOVIMIENTO);
     } finally {
       setGuardando(false);
     }
@@ -181,13 +267,48 @@ export function Movimientos() {
       return;
     }
 
-    setError(null);
     try {
       await finanzasService.eliminarTransaccion(id);
-      setAviso('Movimiento eliminado.');
+      notificaciones.exito('Movimiento eliminado.');
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
+    }
+  };
+
+  const cambiarEstadoRecurrencia = async (id: string, activa: boolean) => {
+    setGuardando(true);
+    try {
+      await finanzasService.actualizarRecurrencia(id, { activa });
+      notificaciones.exito(
+        activa ? 'Recurrencia reanudada.' : 'Recurrencia pausada.',
+      );
+      recargar();
+    } catch (fallo) {
+      notificaciones.error(mensajeDeError(fallo));
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const eliminarRecurrencia = async (id: string) => {
+    if (
+      !window.confirm(
+        '¿Eliminar esta regla recurrente? Los movimientos ya generados se conservan.',
+      )
+    ) {
+      return;
+    }
+
+    setGuardando(true);
+    try {
+      await finanzasService.eliminarRecurrencia(id);
+      notificaciones.exito('Recurrencia eliminada.');
+      recargar();
+    } catch (fallo) {
+      notificaciones.error(mensajeDeError(fallo));
+    } finally {
+      setGuardando(false);
     }
   };
 
@@ -199,7 +320,9 @@ export function Movimientos() {
     const cuenta = cuentas[0];
 
     if (gastos.length === 0 || ingresos.length === 0 || !cuenta) {
-      setError('No hay categorías o cuentas disponibles para crear ejemplos.');
+      notificaciones.aviso(
+        'No hay categorías o cuentas disponibles para crear ejemplos.',
+      );
       return;
     }
 
@@ -228,7 +351,6 @@ export function Movimientos() {
     ];
 
     setGuardando(true);
-    setError(null);
     try {
       for (const ejemplo of ejemplos) {
         await finanzasService.crearTransaccion({
@@ -241,10 +363,10 @@ export function Movimientos() {
           metodoPago: ejemplo.metodo,
         });
       }
-      setAviso('Se cargaron 8 movimientos de ejemplo.');
+      notificaciones.exito('Se cargaron 8 movimientos de ejemplo.');
       recargar();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
     } finally {
       setGuardando(false);
     }
@@ -270,24 +392,22 @@ export function Movimientos() {
           >
             Cargar ejemplos
           </Button>
-          <Button onClick={() => setMostrarFormulario((visible) => !visible)}>
+          <Button onClick={() => {
+            limpiarTodo();
+            setMostrarFormulario((visible) => !visible);
+          }}>
             {mostrarFormulario ? 'Cerrar formulario' : '+ Nuevo movimiento'}
           </Button>
         </div>
       </div>
 
-      <AlertaError mensaje={error} onCerrar={() => setError(null)} />
-      {aviso && (
-        <Alert variant="success" dismissible onClose={() => setAviso(null)}>
-          {aviso}
-        </Alert>
-      )}
+      <AlertaErrorCarga mensaje={errorCarga} onReintentar={reintentarCarga} />
 
       {mostrarFormulario && (
         <Card className="mb-4">
           <Card.Body>
             <Card.Title className="h5 mb-3">Registrar movimiento</Card.Title>
-            <Form onSubmit={guardar}>
+            <Form onSubmit={guardar} noValidate>
               <Row className="g-3">
                 <Col xs={12} md={4}>
                   <Form.Group controlId="mov-tipo">
@@ -312,10 +432,15 @@ export function Movimientos() {
                       step="0.01"
                       value={formulario.monto}
                       required
-                      onChange={(evento) =>
-                        setFormulario((previo) => ({ ...previo, monto: evento.target.value }))
-                      }
+                      isInvalid={Boolean(errores.monto)}
+                      onChange={(evento) => {
+                        setFormulario((previo) => ({ ...previo, monto: evento.target.value }));
+                        limpiar('monto');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.monto}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={4}>
@@ -325,10 +450,15 @@ export function Movimientos() {
                       type="date"
                       value={formulario.fecha}
                       required
-                      onChange={(evento) =>
-                        setFormulario((previo) => ({ ...previo, fecha: evento.target.value }))
-                      }
+                      isInvalid={Boolean(errores.fecha)}
+                      onChange={(evento) => {
+                        setFormulario((previo) => ({ ...previo, fecha: evento.target.value }));
+                        limpiar('fecha');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.fecha}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
 
@@ -339,13 +469,18 @@ export function Movimientos() {
                       value={formulario.descripcion}
                       required
                       placeholder="Ejemplo: Supermercado del barrio"
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.descripcion)}
+                      onChange={(evento) => {
                         setFormulario((previo) => ({
                           ...previo,
                           descripcion: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('descripcion');
+                      }}
                     />
+                    <Form.Control.Feedback type="invalid">
+                      {errores.descripcion}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={4}>
@@ -354,12 +489,14 @@ export function Movimientos() {
                     <Form.Select
                       value={formulario.categoriaId}
                       required
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.categoriaId)}
+                      onChange={(evento) => {
                         setFormulario((previo) => ({
                           ...previo,
                           categoriaId: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('categoriaId');
+                      }}
                     >
                       <option value="">Seleccione…</option>
                       {categoriasDelTipo.map((categoria) => (
@@ -368,6 +505,9 @@ export function Movimientos() {
                         </option>
                       ))}
                     </Form.Select>
+                    <Form.Control.Feedback type="invalid">
+                      {errores.categoriaId}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
 
@@ -377,12 +517,14 @@ export function Movimientos() {
                     <Form.Select
                       value={formulario.cuentaId}
                       required
-                      onChange={(evento) =>
+                      isInvalid={Boolean(errores.cuentaId)}
+                      onChange={(evento) => {
                         setFormulario((previo) => ({
                           ...previo,
                           cuentaId: evento.target.value,
-                        }))
-                      }
+                        }));
+                        limpiar('cuentaId');
+                      }}
                     >
                       <option value="">Seleccione…</option>
                       {cuentas
@@ -393,6 +535,9 @@ export function Movimientos() {
                           </option>
                         ))}
                     </Form.Select>
+                    <Form.Control.Feedback type="invalid">
+                      {errores.cuentaId}
+                    </Form.Control.Feedback>
                   </Form.Group>
                 </Col>
                 <Col xs={12} md={4}>
@@ -420,6 +565,7 @@ export function Movimientos() {
                     <Form.Label>Estado</Form.Label>
                     <Form.Select
                       value={formulario.estado}
+                      disabled={formulario.repetir}
                       onChange={(evento) =>
                         setFormulario((previo) => ({
                           ...previo,
@@ -447,6 +593,86 @@ export function Movimientos() {
                     />
                   </Form.Group>
                 </Col>
+
+                <Col xs={12}>
+                  <hr className="my-1" />
+                  <Form.Check
+                    type="switch"
+                    id="mov-repetir"
+                    label="Repetir este movimiento"
+                    checked={formulario.repetir}
+                    onChange={(evento) => {
+                      limpiar('fechaFin');
+                      setFormulario((previo) => ({
+                        ...previo,
+                        repetir: evento.target.checked,
+                        fechaFin: evento.target.checked ? previo.fechaFin : '',
+                      }));
+                    }}
+                  />
+                  <Form.Text muted>
+                    Solo se registra el día que corresponde; nunca se adelanta
+                    al saldo.
+                  </Form.Text>
+                </Col>
+
+                {formulario.repetir && (
+                  <>
+                    <Col xs={12} md={4}>
+                      <Form.Group controlId="mov-frecuencia">
+                        <Form.Label>Frecuencia</Form.Label>
+                        <Form.Select
+                          value={formulario.frecuencia}
+                          onChange={(evento) =>
+                            setFormulario((previo) => ({
+                              ...previo,
+                              frecuencia: evento.target
+                                .value as FrecuenciaRecurrencia,
+                            }))
+                          }
+                        >
+                          {FRECUENCIAS_RECURRENCIA.map((frecuencia) => (
+                            <option key={frecuencia} value={frecuencia}>
+                              {frecuencia === FrecuenciaRecurrencia.Diaria
+                                ? 'Cada día'
+                                : frecuencia === FrecuenciaRecurrencia.Semanal
+                                  ? 'Cada semana'
+                                  : 'Cada mes'}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} md={4}>
+                      <Form.Group controlId="mov-fecha-fin">
+                        <Form.Label>Repetir hasta (opcional)</Form.Label>
+                        <Form.Control
+                          type="date"
+                          value={formulario.fechaFin}
+                          min={formulario.fecha}
+                          isInvalid={Boolean(errores.fechaFin)}
+                          onChange={(evento) => {
+                            setFormulario((previo) => ({
+                              ...previo,
+                              fechaFin: evento.target.value,
+                            }));
+                            limpiar('fechaFin');
+                          }}
+                        />
+                        <Form.Control.Feedback type="invalid">
+                          {errores.fechaFin}
+                        </Form.Control.Feedback>
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} md={4} className="d-flex align-items-end">
+                      <p className="small text-muted mb-2">
+                        El día del mes se toma de la fecha indicada (por
+                        ejemplo, 01/12 se repite el día 1). Las ocurrencias se
+                        guardan confirmadas.
+                      </p>
+                    </Col>
+                  </>
+                )}
               </Row>
 
               <div className="d-flex gap-2 mt-3">
@@ -456,7 +682,10 @@ export function Movimientos() {
                 <Button
                   variant="outline-secondary"
                   type="button"
-                  onClick={() => setMostrarFormulario(false)}
+                  onClick={() => {
+                    limpiarTodo();
+                    setMostrarFormulario(false);
+                  }}
                 >
                   Cancelar
                 </Button>
@@ -512,6 +741,17 @@ export function Movimientos() {
         </Card.Body>
       </Card>
 
+      <TablaRecurrencias
+        recurrencias={recurrencias}
+        categorias={categorias}
+        cuentas={cuentas}
+        ocupado={guardando}
+        onCambiarEstado={(id, activa) =>
+          void cambiarEstadoRecurrencia(id, activa)
+        }
+        onEliminar={(id) => void eliminarRecurrencia(id)}
+      />
+
       <Card>
         <Card.Body>
           {cargando ? (
@@ -541,6 +781,16 @@ export function Movimientos() {
                       <td className="text-nowrap">{formatearFecha(transaccion.fecha)}</td>
                       <td>
                         {transaccion.descripcion}
+                        {transaccion.recurrenciaId && (
+                          <Badge
+                            bg="info"
+                            text="dark"
+                            className="ms-1"
+                            title="Generado por una regla recurrente"
+                          >
+                            🔁
+                          </Badge>
+                        )}
                         {transaccion.etiquetas.length > 0 && (
                           <div className="small text-muted">
                             {transaccion.etiquetas.map((etiqueta) => (

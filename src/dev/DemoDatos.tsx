@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react';
 import { Alert, Button, Container, Nav, Navbar, Spinner } from 'react-bootstrap';
 import type { Usuario } from '../models';
 import { finanzasService } from '../services';
+import { mensajeDeError } from '../utils/errores';
+import { ErrorBoundary } from './componentes/ErrorBoundary';
+import { NotificacionesProvider } from './componentes/Notificaciones';
+import { useNotificaciones } from './componentes/notificacionesContexto';
 import { SECCIONES } from './secciones';
 import type { Seccion } from './secciones';
-import { mensajeDeError } from './componentes/mensajes';
 import { Acceso } from './pantallas/Acceso';
 import { Categorias } from './pantallas/Categorias';
 import { Cuentas } from './pantallas/Cuentas';
@@ -21,37 +24,61 @@ import { Reportes } from './pantallas/Reportes';
  * vive aislado en `src/dev` con su propia entrada (`demo.html`).
  *
  * La navegación es por estado (no hay router) y todas las pantallas usan
- * únicamente React Bootstrap, sin CSS propio.
+ * únicamente React Bootstrap, sin CSS propio. El proveedor de notificaciones
+ * envuelve todo para que el acceso también pueda informar errores.
  */
 export function DemoDatos() {
+  return (
+    <NotificacionesProvider>
+      <ContenidoDemo />
+    </NotificacionesProvider>
+  );
+}
+
+function ContenidoDemo() {
+  const notificaciones = useNotificaciones();
+  const notificarError = notificaciones.error;
   const [usuario, setUsuario] = useState<Usuario | null>(null);
   const [seccion, setSeccion] = useState<Seccion>('dashboard');
   const [cargandoSesion, setCargandoSesion] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [errorSesion, setErrorSesion] = useState<string | null>(null);
+  const [intento, setIntento] = useState(0);
 
   useEffect(() => {
     let activo = true;
 
     finanzasService
       .usuarioActual()
-      .then((encontrado) => {
+      .then(async (encontrado) => {
+        if (!activo) return;
+
+        // Genera las ocurrencias recurrentes vencidas antes de montar las
+        // pantallas, para que dashboard y saldos ya las incluyan.
+        if (encontrado) {
+          try {
+            await finanzasService.procesarRecurrencias();
+          } catch (fallo: unknown) {
+            if (activo) notificarError(mensajeDeError(fallo));
+          }
+        }
+
         if (!activo) return;
         setUsuario(encontrado);
+        setErrorSesion(null);
         setCargandoSesion(false);
       })
       .catch((fallo: unknown) => {
         if (!activo) return;
-        setError(mensajeDeError(fallo));
+        setErrorSesion(mensajeDeError(fallo));
         setCargandoSesion(false);
       });
 
     return () => {
       activo = false;
     };
-  }, []);
+  }, [intento, notificarError]);
 
   const entrar = (nuevo: Usuario) => {
-    setError(null);
     setUsuario(nuevo);
     setSeccion('dashboard');
   };
@@ -60,11 +87,17 @@ export function DemoDatos() {
     try {
       await finanzasService.cerrarSesion();
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
     } finally {
       setUsuario(null);
       setSeccion('dashboard');
     }
+  };
+
+  const reintentarSesion = () => {
+    setErrorSesion(null);
+    setCargandoSesion(true);
+    setIntento((actual) => actual + 1);
   };
 
   if (cargandoSesion) {
@@ -78,19 +111,22 @@ export function DemoDatos() {
     );
   }
 
-  if (!usuario) {
+  if (errorSesion) {
     return (
-      <>
-        {error && (
-          <Container className="pt-3">
-            <Alert variant="danger" dismissible onClose={() => setError(null)}>
-              {error}
-            </Alert>
-          </Container>
-        )}
-        <Acceso onEntrar={entrar} />
-      </>
+      <Container className="py-5">
+        <Alert variant="danger" className="text-center">
+          <Alert.Heading>No se pudo abrir la base local</Alert.Heading>
+          <p className="mb-3">{errorSesion}</p>
+          <Button variant="outline-danger" onClick={reintentarSesion}>
+            Reintentar
+          </Button>
+        </Alert>
+      </Container>
     );
+  }
+
+  if (!usuario) {
+    return <Acceso onEntrar={entrar} />;
   }
 
   const renderizarSeccion = () => {
@@ -163,13 +199,7 @@ export function DemoDatos() {
       </Navbar>
 
       <Container className="pb-5">
-        {error && (
-          <Alert variant="danger" dismissible onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
-
-        {renderizarSeccion()}
+        <ErrorBoundary key={seccion}>{renderizarSeccion()}</ErrorBoundary>
 
         <footer className="mt-5 pt-3 border-top text-muted small text-center">
           Demo de FinTrack · datos locales en este navegador · sin servidores ni internet

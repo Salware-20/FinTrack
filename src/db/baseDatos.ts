@@ -1,8 +1,10 @@
-import Dexie from 'dexie';
+﻿import Dexie from 'dexie';
 import type { Table } from 'dexie';
 import { CONFIG_APP } from '../config/app';
 import type { DatosCategoria } from '../models/Categoria';
 import type { DatosCuenta } from '../models/Cuenta';
+import type { DatosPresupuesto } from '../models/Presupuesto';
+import type { DatosRecurrencia } from '../models/Recurrencia';
 import type { DatosTransaccion } from '../models/Transaccion';
 import type { DatosTransferencia } from '../models/Transferencia';
 import type { ConfiguracionUsuario } from '../models/tipos';
@@ -29,21 +31,25 @@ export type RegistroCuenta = DatosCuenta;
 export type RegistroCategoria = DatosCategoria;
 export type RegistroTransaccion = DatosTransaccion;
 export type RegistroTransferencia = DatosTransferencia;
+export type RegistroPresupuesto = DatosPresupuesto;
+export type RegistroRecurrencia = DatosRecurrencia;
 export type RegistroConfiguracion = ConfiguracionUsuario;
 
-/** Base de datos local (IndexedDB) de la aplicación. */
+/** Base de datos local (IndexedDB) de la aplicaciÃ³n. */
 export class BaseDatosFinanzas extends Dexie {
   usuarios!: Table<RegistroUsuario, string>;
   cuentas!: Table<RegistroCuenta, string>;
   categorias!: Table<RegistroCategoria, string>;
   transacciones!: Table<RegistroTransaccion, string>;
   transferencias!: Table<RegistroTransferencia, string>;
+  presupuestos!: Table<RegistroPresupuesto, string>;
+  recurrencias!: Table<RegistroRecurrencia, string>;
   configuracion!: Table<RegistroConfiguracion, string>;
 
   constructor(nombre: string = CONFIG_APP.nombreBaseDatos) {
     super(nombre);
 
-    this.version(CONFIG_APP.versionBaseDatos).stores({
+    this.version(1).stores({
       usuarios: 'id, &correo',
       cuentas: 'id, usuarioId, [usuarioId+tipo]',
       categorias: 'id, usuarioId, padreId, [usuarioId+tipo]',
@@ -52,11 +58,37 @@ export class BaseDatosFinanzas extends Dexie {
       transferencias: 'id, usuarioId, cuentaOrigenId, cuentaDestinoId, [usuarioId+fecha]',
       configuracion: 'usuarioId',
     });
+
+    // v2: reglas de movimientos recurrentes y vÃ­nculo desde cada transacciÃ³n
+    // generada. Dexie migra la base existente sin perder datos.
+    this.version(2).stores({
+      usuarios: 'id, &correo',
+      cuentas: 'id, usuarioId, [usuarioId+tipo]',
+      categorias: 'id, usuarioId, padreId, [usuarioId+tipo]',
+      transacciones:
+        'id, usuarioId, cuentaId, categoriaId, fecha, recurrenciaId, [usuarioId+fecha], [usuarioId+cuentaId], [usuarioId+categoriaId], [usuarioId+recurrenciaId]',
+      transferencias: 'id, usuarioId, cuentaOrigenId, cuentaDestinoId, [usuarioId+fecha]',
+      recurrencias: 'id, usuarioId, [usuarioId+activa]',
+      configuracion: 'usuarioId',
+    });
+
+    // v3: presupuestos por categoria con limite manual y deteccion de concentracion
+    this.version(3).stores({
+      usuarios: 'id, &correo',
+      cuentas: 'id, usuarioId, [usuarioId+tipo]',
+      categorias: 'id, usuarioId, padreId, [usuarioId+tipo]',
+      transacciones:
+        'id, usuarioId, cuentaId, categoriaId, fecha, recurrenciaId, [usuarioId+fecha], [usuarioId+cuentaId], [usuarioId+categoriaId], [usuarioId+recurrenciaId]',
+      transferencias: 'id, usuarioId, cuentaOrigenId, cuentaDestinoId, [usuarioId+fecha]',
+      recurrencias: 'id, usuarioId, [usuarioId+activa]',
+      presupuestos: 'id, usuarioId, categoriaId, [usuarioId+categoriaId], [usuarioId+activo]',
+      configuracion: 'usuarioId',
+    });
   }
 }
 
 /**
- * Instancia compartida por la aplicación.
+ * Instancia compartida por la aplicaciÃ³n.
  * Dexie abre la base de forma perezosa en la primera consulta.
  */
 export const baseDatos = new BaseDatosFinanzas();

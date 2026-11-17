@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
+import { Badge, Button, Card, Col, Form, Row, Table } from 'react-bootstrap';
 import type { EstadoResultados, Usuario } from '../../models';
 import type { ResumenFinanciero } from '../../models/tipos';
 import { finanzasService } from '../../services';
@@ -19,8 +19,10 @@ import {
   generarPdfEstadoResultados,
   generarPdfGastosPorCategoria,
 } from '../../utils/reportesPdf';
-import { AlertaError, Cargando } from '../componentes/Estado';
-import { mensajeDeError } from '../componentes/mensajes';
+import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
+import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { useErroresFormulario } from '../componentes/useErroresFormulario';
+import { mensajeDeError } from '../../utils/errores';
 import { GraficoCategorias, GraficoFlujo } from '../componentes/Graficos';
 
 interface Props {
@@ -48,26 +50,31 @@ function rangoMes(meses: number): { desde: string; hasta: string } {
 }
 
 export function Reportes({ usuario }: Props) {
+  const notificaciones = useNotificaciones();
+  const { errores, limpiar, limpiarTodo, marcar } = useErroresFormulario();
+
   const [desde, setDesde] = useState(inicioDeMes());
   const [hasta, setHasta] = useState(finDeMes());
   const [datos, setDatos] = useState<DatosReporte | null>(null);
   const [cargando, setCargando] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [aviso, setAviso] = useState<string | null>(null);
+  const [errorCarga, setErrorCarga] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
 
   useEffect(() => {
+    if (desde > hasta) return;
+
     let activo = true;
 
     consultarReporte(desde, hasta)
       .then((resultado) => {
         if (!activo) return;
         setDatos(resultado);
+        setErrorCarga(null);
         setCargando(false);
       })
       .catch((fallo: unknown) => {
         if (!activo) return;
-        setError(mensajeDeError(fallo));
+        setErrorCarga(mensajeDeError(fallo));
         setCargando(false);
       });
 
@@ -76,11 +83,52 @@ export function Reportes({ usuario }: Props) {
     };
   }, [desde, hasta, version]);
 
+  const reintentarCarga = () => {
+    setErrorCarga(null);
+    setCargando(true);
+    setVersion((actual) => actual + 1);
+  };
+
   const aplicarRango = (rango: { desde: string; hasta: string }) => {
-    setError(null);
+    limpiarTodo();
+
+    if (rango.desde > rango.hasta) {
+      marcar('desde', 'La fecha inicial no puede ser posterior a la final.');
+      setCargando(false);
+      return;
+    }
+
     setCargando(true);
     setDesde(rango.desde);
     setHasta(rango.hasta);
+  };
+
+  const cambiarDesde = (valor: string) => {
+    limpiar('desde');
+    limpiar('hasta');
+    setDesde(valor);
+
+    if (valor > hasta) {
+      marcar('desde', 'La fecha inicial no puede ser posterior a la final.');
+      setCargando(false);
+      return;
+    }
+
+    setCargando(true);
+  };
+
+  const cambiarHasta = (valor: string) => {
+    limpiar('hasta');
+    limpiar('desde');
+    setHasta(valor);
+
+    if (desde > valor) {
+      marcar('hasta', 'La fecha final no puede ser anterior a la inicial.');
+      setCargando(false);
+      return;
+    }
+
+    setCargando(true);
   };
 
   const aplicarAnio = () => {
@@ -90,19 +138,17 @@ export function Reportes({ usuario }: Props) {
 
   const descargarEstadoResultados = () => {
     if (!datos) return;
-    setError(null);
     try {
       const documento = generarPdfEstadoResultados(datos.estado, usuario.nombre);
       documento.save(nombreConFecha('estado-resultados', 'pdf'));
-      setAviso('PDF del estado de resultados generado.');
+      notificaciones.exito('PDF del estado de resultados generado.');
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
     }
   };
 
   const descargarGastos = () => {
     if (!datos) return;
-    setError(null);
     try {
       const documento = generarPdfGastosPorCategoria(
         datos.resumen.porCategoria,
@@ -111,15 +157,13 @@ export function Reportes({ usuario }: Props) {
         usuario.nombre,
       );
       documento.save(nombreConFecha('gastos-por-categoria', 'pdf'));
-      setAviso('PDF de gastos por categoría generado.');
+      notificaciones.exito('PDF de gastos por categoría generado.');
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
     }
   };
 
   const descargarCsv = async () => {
-    setError(null);
-    setAviso(null);
     try {
       const csv = await finanzasService.exportarTransaccionesCsv({ desde, hasta });
       descargarTexto(
@@ -127,9 +171,9 @@ export function Reportes({ usuario }: Props) {
         `\uFEFF${csv}`,
         'text/csv;charset=utf-8',
       );
-      setAviso('CSV exportado. Se abre directamente en Excel.');
+      notificaciones.exito('CSV exportado. Se abre directamente en Excel.');
     } catch (fallo) {
-      setError(mensajeDeError(fallo));
+      notificaciones.error(mensajeDeError(fallo));
     }
   };
 
@@ -170,12 +214,7 @@ export function Reportes({ usuario }: Props) {
         </div>
       </div>
 
-      <AlertaError mensaje={error} onCerrar={() => setError(null)} />
-      {aviso && (
-        <Alert variant="success" dismissible onClose={() => setAviso(null)}>
-          {aviso}
-        </Alert>
-      )}
+      <AlertaErrorCarga mensaje={errorCarga} onReintentar={reintentarCarga} />
 
       <Card className="mb-4">
         <Card.Body>
@@ -187,11 +226,12 @@ export function Reportes({ usuario }: Props) {
                   type="date"
                   value={desde}
                   max={hasta}
-                  onChange={(evento) => {
-                    setCargando(true);
-                    setDesde(evento.target.value);
-                  }}
+                  isInvalid={Boolean(errores.desde)}
+                  onChange={(evento) => cambiarDesde(evento.target.value)}
                 />
+                <Form.Control.Feedback type="invalid">
+                  {errores.desde}
+                </Form.Control.Feedback>
               </Form.Group>
             </Col>
             <Col xs={12} md={3}>
@@ -201,11 +241,12 @@ export function Reportes({ usuario }: Props) {
                   type="date"
                   value={hasta}
                   min={desde}
-                  onChange={(evento) => {
-                    setCargando(true);
-                    setHasta(evento.target.value);
-                  }}
+                  isInvalid={Boolean(errores.hasta)}
+                  onChange={(evento) => cambiarHasta(evento.target.value)}
                 />
+                <Form.Control.Feedback type="invalid">
+                  {errores.hasta}
+                </Form.Control.Feedback>
               </Form.Group>
             </Col>
             <Col xs={12} md={6}>
@@ -249,7 +290,7 @@ export function Reportes({ usuario }: Props) {
         </Card.Body>
       </Card>
 
-      {cargando || !datos ? (
+      {errorCarga ? null : cargando || !datos ? (
         <Cargando texto="Calculando el reporte…" />
       ) : (
         <>
