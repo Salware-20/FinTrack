@@ -70,7 +70,7 @@ npm run dev
 | `npm run lint` | Análisis estático con ESLint |
 | `npm test` | Pruebas de humo del servicio con `fake-indexeddb` |
 | `npm run preview` | Sirve el build de producción (necesario para probar la PWA) |
-| `node scripts/generar-iconos.mjs` | Regenera `public/pwa-192x192.png` y `public/pwa-512x512.png` |
+| `node scripts/generar-iconos.mjs` | Regenera `public/favicon.svg` y los PNG de la PWA desde el logotipo en pixel art |
 
 **Demo funcional:** `http://localhost:5173/demo.html`
 
@@ -86,14 +86,16 @@ app-contabilidad/
 ├── index.html                      # Entrada de la aplicación real
 ├── vite.config.ts                  # React + VitePWA (manifiesto y service worker)
 ├── public/
-│   ├── favicon.svg                 # Icono del navegador
+│   ├── favicon.svg                 # Favicon generado: un <rect> por píxel
 │   ├── icons.svg                   # Iconos auxiliares
-│   ├── pwa-192x192.png             # Icono PWA 192 x 192
-│   └── pwa-512x512.png             # Icono PWA 512 x 512
+│   ├── pwa-192x192.png             # Icono PWA 192 x 192 (logotipo 12x)
+│   └── pwa-512x512.png             # Icono PWA 512 x 512 (logotipo 32x)
 ├── scripts/
-│   ├── generar-iconos.mjs          # Regenera los PNG de la PWA sin dependencias
+│   ├── generar-iconos.mjs          # Lee el logotipo 16 x 16 y genera favicon + PNG
 │   └── smoke.mjs                   # Pruebas de humo del servicio (Node)
 ├── src/
+│   ├── assets/
+│   │   └── Logotipo.png            # Logotipo 16 x 16 (fuente de los iconos)
 │   ├── config/
 │   │   └── app.ts                  # Moneda, locale, versión de BD, sesión, hash
 │   ├── db/
@@ -539,7 +541,13 @@ El manifiesto declara `name`, `short_name`, `description`, `start_url: "/"`, `di
 | `dist/registerSW.js` | Registro inyectado en `index.html` |
 | `dist/workbox-*.js` | Runtime de Workbox |
 
-Los iconos son PNG generados localmente por `scripts/generar-iconos.mjs`, un script sin dependencias que dibuja el cuadrado azul con barras blancas y escribe el PNG con `node:zlib`. Se pueden sustituir por un diseño propio manteniendo los nombres y tamaños.
+Los iconos se generan localmente con `scripts/generar-iconos.mjs`, que lee el logotipo en pixel art de 16 x 16 RGBA (busca `assets/logotipo.png` y, si no existe, `src/assets/Logotipo.png`). El decodificador PNG usa únicamente `node:zlib`, sin dependencias externas, y produce:
+
+- `public/favicon.svg`: un `<rect>` de 1 x 1 por cada píxel no transparente, con `shape-rendering="crispEdges"`.
+- `public/pwa-192x192.png`: escalado Nearest Neighbor exacto de 12x.
+- `public/pwa-512x512.png`: escalado Nearest Neighbor exacto de 32x.
+
+Para cambiar el diseño basta con reemplazar el logotipo por otro PNG de 16 x 16 y volver a ejecutar el script.
 
 ### Instalación y prueba offline
 
@@ -736,3 +744,4 @@ La instalación y el modo offline se comprueban con `npm run preview` y DevTools
 | 2026-11-15 | **Movimientos recurrentes.** Nueva entidad `Recurrencia` con frecuencias diaria, semanal y mensual; tabla Dexie v2, índice `recurrenciaId` y migración sin pérdida de datos. El servicio crea reglas, genera ocurrencias vencidas hasta hoy (nunca futuras), recupera atrasos al iniciar sesión, evita duplicados con avance atómico de `proximaFecha` y conserva el historial al pausar o eliminar. Fin de mes anclado al día original. Respaldos v2 con retrocompatibilidad v1. UI en Movimientos: casilla “Repetir”, fecha final opcional y tarjeta de reglas con pausar/reanudar/eliminar. La prueba de humo sube de 48 a 75 comprobaciones. | `src/models/Recurrencia.ts`, `tipos.ts`, `Transaccion.ts`, `index.ts`, `src/utils/recurrencia.ts`, `formato.ts`, `src/db/baseDatos.ts`, `src/config/app.ts`, `src/services/*`, `src/dev/pantallas/Movimientos.tsx`, `src/dev/componentes/TablaRecurrencias.tsx`, `src/dev/DemoDatos.tsx`, `scripts/smoke.mjs`, `README.md` |
 | 2026-11-16 | **PWA offline e instalable.** Se instala `vite-plugin-pwa` 2 y se configura `VitePWA` con `registerType: 'autoUpdate'`, precache de JS/CSS/HTML/ICO/PNG/SVG/WOFF2, `cleanupOutdatedCaches` y `navigateFallback` al `index.html`. Manifiesto FinTrack en modo `standalone` con `theme_color: #0d6efd` e iconos de 192 y 512 px. El registro del service worker se inyecta automáticamente, sin tocar `main.tsx`. Se añaden los iconos PNG generados por `scripts/generar-iconos.mjs` (sin dependencias) y en `index.html` el `theme-color` y el `apple-touch-icon`. El build produce `manifest.webmanifest` y `sw.js` sin incluir `demo.html` ni `src/dev`; build, lint y 75 pruebas en verde. | `package.json`, `package-lock.json`, `vite.config.ts`, `index.html`, `public/pwa-192x192.png`, `public/pwa-512x512.png`, `scripts/generar-iconos.mjs`, `README.md` |
 | 2026-11-16 | **Sistema híbrido de control de gastos y presupuestos.** Entidad Presupuesto con validaciones y serialización. Esquema Dexie v3 con tabla presupuestos e índices compuestos. CRUD de presupuestos con cálculo de consumo acumulado por jerarquía (subcategorías) y clasificación de estados (Normal, Advertencia, Excedido). Alerta automática por concentración de gasto (>= 30% del gasto total). Meta de ahorro mensual en configuración y progreso en tiempo real. Soporte completo en respaldos v3 con retrocompatibilidad v1/v2. En UI: Alertas de consumo y progreso en Dashboard, gestión de presupuestos en Categorías y meta de ahorro en Mi Cuenta. Pruebas de humo suben a 91 verificaciones. | src/models/*, src/db/*, src/services/*, src/dev/*, scripts/smoke.mjs, README.md |
+| 2026-11-17 | **Iconos generados desde el logotipo en pixel art.** `scripts/generar-iconos.mjs` lee `src/assets/Logotipo.png` (16 x 16 RGBA) con un decodificador PNG propio basado en `node:zlib` (chunks IDAT, filtros None/Sub/Up/Average/Paeth, sin dependencias externas) y genera `public/favicon.svg` (un `<rect>` por píxel no transparente, `shape-rendering="crispEdges"`) y los PNG `pwa-192x192.png` y `pwa-512x512.png` con escalado Nearest Neighbor exacto de 12x y 32x. El build de la PWA precachea los tres archivos y el manifiesto los referencia. | `scripts/generar-iconos.mjs`, `public/favicon.svg`, `public/pwa-192x192.png`, `public/pwa-512x512.png`, `README.md` |
