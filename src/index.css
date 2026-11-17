@@ -453,3 +453,205 @@ body {
     transition: none !important;
   }
 }
+
+/* ==========================================================
+   Formularios, filtros, tablas y bloques de las demás pantallas
+   ========================================================== */
+
+.form-label {
+  margin-bottom: 0.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.ft-encabezado {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 1.75rem;
+}
+
+.ft-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Formulario con una raya verde al costado, como una anotación en el libro */
+.ft-panel {
+  margin-bottom: 2rem;
+  padding: 0.25rem 0 0.25rem 1.25rem;
+  border-left: 3px solid var(--ft-pino);
+}
+
+.ft-rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.9rem 1rem;
+}
+
+.ft-ancho-doble {
+  grid-column: span 2;
+}
+
+.ft-filtros {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.ft-filtros-fechas {
+  grid-template-columns: repeat(2, minmax(9rem, 11rem)) auto;
+  align-items: end;
+  margin-bottom: 2rem;
+}
+
+.ft-selector-tipo {
+  display: inline-flex;
+  border: 1px solid var(--ft-linea);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.ft-selector-tipo button {
+  padding: 0.4rem 1.1rem;
+  border: 0;
+  background: var(--ft-superficie);
+  color: var(--ft-tinta-suave);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ft-selector-tipo button.activo.gasto {
+  background: var(--ft-gasto);
+  color: #fff;
+}
+
+.ft-selector-tipo button.activo.ingreso {
+  background: var(--ft-ingreso);
+  color: #fff;
+}
+
+.ft-selector-tipo button:focus-visible {
+  outline: 2px solid var(--ft-pino);
+  outline-offset: -2px;
+}
+
+.ft-resumen-linea {
+  margin: 0 0 0.75rem;
+  color: var(--ft-tinta-suave);
+}
+
+.ft-icono-btn {
+  padding: 0.25rem 0.4rem;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ft-tinta-suave);
+  cursor: pointer;
+}
+
+.ft-icono-btn:hover,
+.ft-icono-btn:focus-visible {
+  background: #f5dedb;
+  color: var(--ft-gasto);
+}
+
+.ft-etiqueta-estado {
+  margin-left: 0.6rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--ft-ambar);
+  border-radius: 3px;
+  color: var(--ft-ambar);
+  font-size: 0.75rem;
+}
+
+.ft-fila-archivada td {
+  color: var(--ft-tinta-suave);
+}
+
+.ft-punto {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-right: 0.55rem;
+  border-radius: 2px;
+}
+
+.ft-arbol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ft-arbol li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--ft-linea);
+}
+
+.ft-arbol .ft-raiz {
+  font-weight: 500;
+}
+
+.ft-arbol .ft-hija {
+  padding-left: 1.4rem;
+  color: var(--ft-tinta-suave);
+}
+
+.ft-arbol small {
+  color: var(--ft-tinta-suave);
+}
+
+.ft-grafico {
+  position: relative;
+  height: 18rem;
+}
+
+.ft-bloque {
+  max-width: 40rem;
+  padding: 1.5rem 0 2rem;
+  border-top: 1px solid var(--ft-linea);
+}
+
+.ft-datos {
+  display: grid;
+  grid-template-columns: 10rem 1fr;
+  gap: 0.4rem 1rem;
+  margin: 0;
+}
+
+.ft-datos dt {
+  color: var(--ft-tinta-suave);
+  font-weight: 400;
+}
+
+.ft-datos dd {
+  margin: 0;
+}
+
+@media (max-width: 575.98px) {
+  .ft-ancho-doble {
+    grid-column: span 1;
+  }
+
+  .ft-filtros-fechas {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .ft-datos {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .ft-datos dd {
+    margin-bottom: 0.6rem;
+  }
+}

@@ -89,7 +89,6 @@ export function Acceso({ onEntrar }: Props) {
             enviar datos a ningún servidor.
           </p>
         </div>
-        <small>Hecho en Costa Rica, en colones.</small>
       </section>
 
       <section className="ft-acceso-formulario">

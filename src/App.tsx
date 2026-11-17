@@ -2,9 +2,13 @@ import { useEffect, useState } from 'react'
 import type { Usuario } from './models'
 import { finanzasService } from './services'
 import { BarraLateral } from './componentes/BarraLateral'
-import { PAGINAS } from './componentes/paginas'
 import type { Pagina } from './componentes/paginas'
 import { Acceso } from './paginas/Acceso'
+import { Categorias } from './paginas/Categorias'
+import { Cuentas } from './paginas/Cuentas'
+import { MiCuenta } from './paginas/MiCuenta'
+import { Movimientos } from './paginas/Movimientos'
+import { Reportes } from './paginas/Reportes'
 import { Resumen } from './paginas/Resumen'
 
 function App() {
@@ -51,8 +55,6 @@ function App() {
     )
   }
 
-  const etiqueta = PAGINAS.find((p) => p.id === pagina)?.etiqueta ?? ''
-
   return (
     <div className="ft-app">
       <BarraLateral
@@ -62,13 +64,21 @@ function App() {
         onSalir={() => void salir()}
       />
       <main className="ft-contenido">
-        {pagina === 'resumen' ? (
+        {pagina === 'resumen' && (
           <Resumen usuario={usuario} onIrAMovimientos={() => setPagina('movimientos')} />
-        ) : (
-          <>
-            <h1 className="ft-titulo">{etiqueta}</h1>
-            <p className="ft-subtitulo">Esta pantalla se construye en el siguiente paso.</p>
-          </>
+        )}
+        {pagina === 'movimientos' && <Movimientos />}
+        {pagina === 'cuentas' && <Cuentas />}
+        {pagina === 'categorias' && <Categorias />}
+        {pagina === 'reportes' && <Reportes usuario={usuario} />}
+        {pagina === 'cuenta' && (
+          <MiCuenta
+            usuario={usuario}
+            onCuentaEliminada={() => {
+              setUsuario(null)
+              setPagina('resumen')
+            }}
+          />
         )}
       </main>
     </div>

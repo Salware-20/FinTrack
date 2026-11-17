@@ -4,6 +4,8 @@ import type { Categoria, Cuenta, SaldoCuenta, Transaccion, Usuario } from '../mo
 import { TipoTransaccion } from '../models'
 import type { ResumenFinanciero } from '../models/tipos'
 import { finanzasService } from '../services'
+import { ICONO_CUENTA } from '../componentes/ayudas'
+import { GraficoFlujo } from '../componentes/Graficos'
 import { finDeMes, formatearFecha, formatearMoneda, inicioDeMes } from '../utils/formato'
 import { sumarMontos } from '../utils/numeros'
 
@@ -12,15 +14,9 @@ interface Props {
   onIrAMovimientos: () => void
 }
 
-const ICONO_CUENTA: Record<string, string> = {
-  efectivo: 'bi-cash-coin',
-  banco: 'bi-bank',
-  ahorro: 'bi-piggy-bank',
-  tarjeta: 'bi-credit-card',
-}
-
 export function Resumen({ usuario, onIrAMovimientos }: Props) {
   const [mes, setMes] = useState<ResumenFinanciero | null>(null)
+  const [total, setTotal] = useState<ResumenFinanciero | null>(null)
   const [saldos, setSaldos] = useState<SaldoCuenta[]>([])
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [cuentas, setCuentas] = useState<Cuenta[]>([])
@@ -31,14 +27,16 @@ export function Resumen({ usuario, onIrAMovimientos }: Props) {
     let activo = true
     Promise.all([
       finanzasService.obtenerResumen({ desde: inicioDeMes(), hasta: finDeMes() }),
+      finanzasService.obtenerResumen(),
       finanzasService.obtenerSaldos(),
       finanzasService.listarCategorias(),
       finanzasService.listarCuentas(),
       finanzasService.listarTransacciones(),
     ])
-      .then(([resumen, sal, cat, cta, tx]) => {
+      .then(([resumen, general, sal, cat, cta, tx]) => {
         if (!activo) return
         setMes(resumen)
+        setTotal(general)
         setSaldos(sal)
         setCategorias(cat)
         setCuentas(cta)
@@ -165,6 +163,13 @@ export function Resumen({ usuario, onIrAMovimientos }: Props) {
           )}
         </section>
       </div>
+
+      {total && total.porMes.length > 0 && (
+        <section className="mt-5" aria-labelledby="t-flujo">
+          <h2 id="t-flujo" className="ft-seccion-titulo">Ingresos y gastos por mes</h2>
+          <GraficoFlujo datos={total.porMes} />
+        </section>
+      )}
     </>
   )
 }
