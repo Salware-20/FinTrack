@@ -15,6 +15,8 @@ function App() {
   const [usuario, setUsuario] = useState<Usuario | null>(null)
   const [pagina, setPagina] = useState<Pagina>('resumen')
   const [revisandoSesion, setRevisandoSesion] = useState(true)
+  // Cada vez que hay usuario se generan los movimientos recurrentes que ya vencieron
+  const [listo, setListo] = useState<string | null>(null)
 
   // Si ya había una sesión abierta en esta pestaña, se retoma
   useEffect(() => {
@@ -32,6 +34,20 @@ function App() {
       activo = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!usuario) return
+    let activo = true
+    finanzasService
+      .procesarRecurrencias()
+      .catch(() => 0)
+      .finally(() => {
+        if (activo) setListo(usuario.id)
+      })
+    return () => {
+      activo = false
+    }
+  }, [usuario])
 
   const salir = async () => {
     try {
@@ -55,6 +71,9 @@ function App() {
     )
   }
 
+  // Mientras se procesan las recurrencias no se muestra el resumen, para que los saldos ya las incluyan
+  if (listo !== usuario.id) return null
+
   return (
     <div className="ft-app">
       <BarraLateral
@@ -65,7 +84,7 @@ function App() {
       />
       <main className="ft-contenido">
         {pagina === 'resumen' && (
-          <Resumen usuario={usuario} onIrAMovimientos={() => setPagina('movimientos')} />
+          <Resumen usuario={usuario} onIr={setPagina} />
         )}
         {pagina === 'movimientos' && <Movimientos />}
         {pagina === 'cuentas' && <Cuentas />}

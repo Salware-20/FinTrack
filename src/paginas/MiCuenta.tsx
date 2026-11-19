@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Button, Form } from 'react-bootstrap'
 import type { Usuario } from '../models'
 import { finanzasService } from '../services'
 import type { RespaldoFinanzas } from '../services'
 import { Avisos } from '../componentes/Avisos'
+import { Confirmar } from '../componentes/Confirmar'
+import type { PeticionConfirmar } from '../componentes/Confirmar'
 import { Encabezado } from '../componentes/Encabezado'
 import { useAvisos } from '../componentes/useAvisos'
 import { descargarTexto, leerArchivoTexto, nombreConFecha } from '../utils/descargas'
+import { formatearMoneda } from '../utils/formato'
 
 interface Props {
   usuario: Usuario
@@ -26,6 +29,41 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
   const [confirmaImportar, setConfirmaImportar] = useState(false)
   const [contrasenaEliminar, setContrasenaEliminar] = useState('')
   const [ocupado, setOcupado] = useState(false)
+  const [confirmar, setConfirmar] = useState<PeticionConfirmar | null>(null)
+  const [meta, setMeta] = useState('')
+  const [metaGuardada, setMetaGuardada] = useState(0)
+
+  useEffect(() => {
+    let activo = true
+    finanzasService
+      .obtenerConfiguracion()
+      .then((config) => {
+        if (!activo) return
+        const valor = config.metaAhorroMensual ?? 0
+        setMetaGuardada(valor)
+        setMeta(valor > 0 ? String(valor) : '')
+      })
+      .catch(() => {})
+    return () => {
+      activo = false
+    }
+  }, [])
+
+  const guardarMeta = async (valor: number) => {
+    if (!Number.isFinite(valor) || valor < 0) {
+      mostrarError('La meta debe ser un monto igual o mayor que cero.')
+      return
+    }
+    try {
+      const config = await finanzasService.actualizarConfiguracion({ metaAhorroMensual: valor })
+      const guardado = config.metaAhorroMensual ?? 0
+      setMetaGuardada(guardado)
+      setMeta(guardado > 0 ? String(guardado) : '')
+      exito(guardado > 0 ? `Meta fijada en ${formatearMoneda(guardado)} por mes. Su avance aparece en el Resumen.` : 'Meta de ahorro quitada.')
+    } catch (causa) {
+      fallo(causa)
+    }
+  }
 
   const cambiarContrasena = async (evento: FormEvent<HTMLFormElement>) => {
     evento.preventDefault()
@@ -80,28 +118,46 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
     }
   }
 
-  const restablecer = async () => {
-    if (!window.confirm('Se borrarán todos sus movimientos y se restaurarán las categorías base. ¿Continuar?')) return
-    try {
-      await finanzasService.resetearDatos()
-      exito('Datos restablecidos.')
-    } catch (causa) {
-      fallo(causa)
-    }
-  }
+  const restablecer = () =>
+    setConfirmar({
+      titulo: 'Restablecer mis datos',
+      mensaje: (
+        <p className="mb-0">
+          Se borran todos sus movimientos y los que se repiten, y se restauran las categorías base.
+          Su usuario y su contraseña se mantienen.
+        </p>
+      ),
+      accion: 'Restablecer',
+      peligro: true,
+      alAceptar: async () => {
+        try {
+          await finanzasService.resetearDatos()
+          exito('Datos restablecidos.')
+        } catch (causa) {
+          fallo(causa)
+        }
+      },
+    })
 
   const eliminarCuenta = async () => {
     if (!contrasenaEliminar) {
       mostrarError('Escriba su contraseña para eliminar la cuenta.')
       return
     }
-    if (!window.confirm('Se eliminará su cuenta y todos sus datos. Esto no se puede deshacer. ¿Continuar?')) return
-    try {
-      await finanzasService.eliminarCuenta(contrasenaEliminar)
-      onCuentaEliminada()
-    } catch (causa) {
-      fallo(causa)
-    }
+    setConfirmar({
+      titulo: 'Eliminar mi cuenta',
+      mensaje: <p className="mb-0">Se elimina su cuenta y todos sus datos de este navegador. Esto no se puede deshacer.</p>,
+      accion: 'Eliminar definitivamente',
+      peligro: true,
+      alAceptar: async () => {
+        try {
+          await finanzasService.eliminarCuenta(contrasenaEliminar)
+          onCuentaEliminada()
+        } catch (causa) {
+          fallo(causa)
+        }
+      },
+    })
   }
 
   return (
@@ -121,6 +177,28 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
           <dt>Último acceso</dt>
           <dd>{fechaLarga(usuario.ultimoAcceso)}</dd>
         </dl>
+      </section>
+
+      <section className="ft-bloque" aria-labelledby="t-meta">
+        <h2 id="t-meta" className="ft-seccion-titulo">Meta de ahorro mensual</h2>
+        <p className="text-secondary">
+          Cuánto quiere que le quede al final de cada mes. El Resumen le muestra cuánto lleva.
+        </p>
+        <Form className="ft-fila-formulario" onSubmit={(e) => {
+          e.preventDefault()
+          void guardarMeta(Number(meta.replace(',', '.') || '0'))
+        }}>
+          <Form.Group controlId="mc-meta" className="flex-grow-1">
+            <Form.Label>Monto por mes (₡)</Form.Label>
+            <Form.Control inputMode="decimal" value={meta} onChange={(e) => setMeta(e.target.value)} placeholder="Ejemplo: 100000" />
+          </Form.Group>
+          <Button type="submit">Guardar meta</Button>
+          {metaGuardada > 0 && (
+            <Button variant="link" className="text-danger" onClick={() => void guardarMeta(0)}>
+              Quitar meta
+            </Button>
+          )}
+        </Form>
       </section>
 
       <section className="ft-bloque" aria-labelledby="t-clave">
@@ -174,7 +252,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
       <section className="ft-bloque" aria-labelledby="t-peligro">
         <h2 id="t-peligro" className="ft-seccion-titulo">Borrar datos</h2>
         <p className="text-secondary">Estas acciones no se pueden deshacer.</p>
-        <Button variant="outline-danger" onClick={() => void restablecer()}>
+        <Button variant="outline-danger" onClick={restablecer}>
           Restablecer mis datos
         </Button>
 
@@ -187,6 +265,8 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
           Eliminar mi cuenta
         </Button>
       </section>
+
+      <Confirmar peticion={confirmar} onCerrar={() => setConfirmar(null)} />
     </>
   )
 }

@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Button, Form } from 'react-bootstrap'
 import type { Usuario } from '../models'
-import type { EstadoResultados, ResumenFinanciero } from '../models/tipos'
+import type { EstadoResultados, FilaEstadoResultados, ResumenFinanciero, ResumenPorCategoria } from '../models/tipos'
 import { finanzasService } from '../services'
 import { Avisos } from '../componentes/Avisos'
 import { Encabezado } from '../componentes/Encabezado'
 import { GraficoFlujo, GraficoGastos } from '../componentes/Graficos'
+import { Emoji } from '../componentes/Emoji'
+import { porNumero, porTexto } from '../componentes/orden'
+import { ThOrdenable } from '../componentes/ThOrdenable'
 import { useAvisos } from '../componentes/useAvisos'
+import { useOrden } from '../componentes/useOrden'
 import { descargarTexto, nombreConFecha } from '../utils/descargas'
 import { finDeMes, formatearFecha, formatearMoneda, formatearPorcentaje, inicioDeMes } from '../utils/formato'
 
@@ -96,9 +100,26 @@ export function Reportes({ usuario }: { usuario: Usuario }) {
     }
   }
 
-  const ingresos = estado?.filas.filter((f) => f.tipo === 'ingreso') ?? []
-  const gastos = estado?.filas.filter((f) => f.tipo === 'gasto') ?? []
-  const gastosCategoria = resumen?.porCategoria.filter((c) => c.tipo === 'gasto') ?? []
+  // En el estado de resultados solo se ordenan las filas de cada grupo; los totales quedan fijos
+  const comparadoresFila = {
+    concepto: porTexto<FilaEstadoResultados>((f) => f.nombre),
+    total: porNumero<FilaEstadoResultados>((f) => f.total),
+  }
+  const ordenIngresos = useOrden(estado?.filas.filter((f) => f.tipo === 'ingreso') ?? [], comparadoresFila)
+  const ordenGastos = useOrden(estado?.filas.filter((f) => f.tipo === 'gasto') ?? [], comparadoresFila)
+  const ingresos = ordenIngresos.filas
+  const gastos = ordenGastos.filas
+  const alternarEstado = (clave: string) => {
+    ordenIngresos.alternar(clave)
+    ordenGastos.alternar(clave)
+  }
+
+  const tablaCategorias = useOrden(resumen?.porCategoria.filter((c) => c.tipo === 'gasto') ?? [], {
+    categoria: porTexto<ResumenPorCategoria>((c) => c.nombre),
+    total: porNumero<ResumenPorCategoria>((c) => c.total),
+    cantidad: porNumero<ResumenPorCategoria>((c) => c.cantidad),
+  })
+  const gastosCategoria = tablaCategorias.filas
 
   return (
     <>
@@ -148,28 +169,28 @@ export function Reportes({ usuario }: { usuario: Usuario }) {
               <table className="ft-tabla">
                 <thead>
                   <tr>
-                    <th scope="col">Concepto</th>
-                    <th scope="col" className="derecha">Total</th>
+                    <ThOrdenable clave="concepto" orden={ordenIngresos.orden} onOrdenar={alternarEstado}>Concepto</ThOrdenable>
+                    <ThOrdenable clave="total" orden={ordenIngresos.orden} onOrdenar={alternarEstado} derecha>Total</ThOrdenable>
                   </tr>
                 </thead>
                 <tbody>
                   {ingresos.map((f) => (
                     <tr key={f.categoriaId}>
-                      <td>{f.nombre}</td>
+                      <td className="ps-3">{f.nombre}</td>
                       <td className="derecha ft-monto ingreso">{formatearMoneda(f.total)}</td>
                     </tr>
                   ))}
-                  <tr>
+                  <tr className="ft-fila-subtotal">
                     <td><strong>Total de ingresos</strong></td>
                     <td className="derecha ft-monto ingreso"><strong>{formatearMoneda(estado.totalIngresos)}</strong></td>
                   </tr>
                   {gastos.map((f) => (
                     <tr key={f.categoriaId}>
-                      <td>{f.nombre}</td>
+                      <td className="ps-3">{f.nombre}</td>
                       <td className="derecha ft-monto gasto">− {formatearMoneda(f.total)}</td>
                     </tr>
                   ))}
-                  <tr>
+                  <tr className="ft-fila-subtotal">
                     <td><strong>Total de gastos</strong></td>
                     <td className="derecha ft-monto gasto"><strong>− {formatearMoneda(estado.totalGastos)}</strong></td>
                   </tr>
@@ -191,15 +212,17 @@ export function Reportes({ usuario }: { usuario: Usuario }) {
               <table className="ft-tabla mt-3">
                 <thead>
                   <tr>
-                    <th scope="col">Categoría</th>
-                    <th scope="col" className="derecha">Total</th>
+                    <ThOrdenable clave="categoria" orden={tablaCategorias.orden} onOrdenar={tablaCategorias.alternar}>Categoría</ThOrdenable>
+                    <ThOrdenable clave="cantidad" orden={tablaCategorias.orden} onOrdenar={tablaCategorias.alternar} derecha>Mov.</ThOrdenable>
+                    <ThOrdenable clave="total" orden={tablaCategorias.orden} onOrdenar={tablaCategorias.alternar} derecha>Total</ThOrdenable>
                     <th scope="col" className="derecha">%</th>
                   </tr>
                 </thead>
                 <tbody>
                   {gastosCategoria.map((c) => (
                     <tr key={c.categoriaId}>
-                      <td>{c.nombre}</td>
+                      <td><Emoji valor={c.icono} />{c.nombre}</td>
+                      <td className="derecha ft-tenue">{c.cantidad}</td>
                       <td className="derecha ft-monto">{formatearMoneda(c.total)}</td>
                       <td className="derecha">{formatearPorcentaje(c.porcentaje)}</td>
                     </tr>
