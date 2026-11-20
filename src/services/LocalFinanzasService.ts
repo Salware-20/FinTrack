@@ -30,6 +30,7 @@ import type {
   ConfiguracionUsuario,
   EstadoPresupuesto,
   EstadoResultados,
+  FilaCsvDetectada,
   FiltroTransacciones,
   NuevaCategoria,
   NuevaCuenta,
@@ -55,6 +56,7 @@ import {
   normalizarCorreo,
   verificarHash,
 } from '../utils/criptografia';
+import { detectarFilasCsv } from '../utils/importadorCsv';
 import { redondearMonto, sumarMontos } from '../utils/numeros';
 import { fechaHoy } from '../utils/formato';
 import { planificarOcurrencias } from '../utils/recurrencia';
@@ -632,6 +634,147 @@ export class LocalFinanzasService implements FinanzasService {
     }
 
     await this.db.transacciones.delete(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Importación de estados de cuenta
+  // ---------------------------------------------------------------------------
+
+  async previsualizarCsv(
+    contenidoCsv: string,
+    cuentaId: string,
+  ): Promise<FilaCsvDetectada[]> {
+    const sesion = await this.requerirSesion();
+    await this.validarCuentaDelUsuario(sesion.id, cuentaId, false);
+
+    if (!contenidoCsv || !contenidoCsv.trim()) {
+      throw new ErrorValidacion('El archivo está vacío.', 'csv');
+    }
+
+    const [registrosCategorias, registrosTransacciones] = await Promise.all([
+      this.db.categorias.where('usuarioId').equals(sesion.id).toArray(),
+      this.db.transacciones
+        .where('[usuarioId+cuentaId]')
+        .equals([sesion.id, cuentaId])
+        .toArray(),
+    ]);
+
+    const categorias = registrosCategorias.map((categoria) =>
+      Categoria.desdeJSON(categoria),
+    );
+    const transaccionesExistentes = registrosTransacciones.map((transaccion) =>
+      Transaccion.desdeJSON(transaccion),
+    );
+
+    return detectarFilasCsv(contenidoCsv, {
+      cuentaId,
+      categorias,
+      transaccionesExistentes,
+    });
+  }
+
+  async confirmarImportacionCsv(
+    cuentaId: string,
+    filas: FilaCsvDetectada[],
+  ): Promise<number> {
+    const sesion = await this.requerirSesion();
+    await this.validarCuentaDelUsuario(sesion.id, cuentaId, true);
+
+    if (!Array.isArray(filas) || filas.length === 0) {
+      throw new ErrorValidacion('No hay movimientos para importar.', 'filas');
+    }
+
+    const registrosCategorias = await this.db.categorias
+      .where('usuarioId')
+      .equals(sesion.id)
+      .toArray();
+    const categoriasPorId = new Map(
+      registrosCategorias.map((categoria) => [categoria.id, categoria]),
+    );
+
+    // Se valida todo antes de escribir: si una fila falla, no se guarda nada.
+    const transacciones: Transaccion[] = [];
+    let indice = 0;
+
+    try {
+      for (const fila of filas) {
+        indice += 1;
+
+        const categoria = fila.categoriaIdSugerida
+          ? categoriasPorId.get(fila.categoriaIdSugerida)
+          : undefined;
+        if (!categoria) {
+          throw new ErrorValidacion(
+            'La categoría no existe o no le pertenece.',
+            'categoriaId',
+          );
+        }
+        if (categoria.tipo !== fila.tipo) {
+          throw new ErrorValidacion(
+            `La categoría "${categoria.nombre}" es de tipo ${categoria.tipo} y el movimiento es de tipo ${fila.tipo}.`,
+            'categoriaId',
+          );
+        }
+
+        transacciones.push(
+          Transaccion.crear(
+            {
+              monto: fila.monto,
+              tipo: fila.tipo,
+              fecha: fila.fecha,
+              descripcion: fila.descripcion,
+              categoriaId: categoria.id,
+              cuentaId,
+              metodoPago: fila.metodoPagoSugerido,
+              estado: EstadoTransaccion.Confirmado,
+              etiquetas: ['importado'],
+            },
+            sesion.id,
+          ),
+        );
+      }
+    } catch (fallo) {
+      if (fallo instanceof ErrorValidacion) {
+        throw new ErrorValidacion(
+          `Movimiento ${indice}: ${fallo.message}`,
+          fallo.campo,
+        );
+      }
+      throw fallo;
+    }
+
+    await this.db.transaction('rw', this.db.transacciones, async () => {
+      await this.db.transacciones.bulkAdd(
+        transacciones.map((transaccion) => transaccion.toJSON()),
+      );
+    });
+
+    return transacciones.length;
+  }
+
+  /**
+   * Comprueba que la cuenta exista y pertenezca al usuario. Con
+   * `exigirActiva` también rechaza cuentas archivadas (no admiten movimientos).
+   */
+  private async validarCuentaDelUsuario(
+    usuarioId: string,
+    cuentaId: string,
+    exigirActiva: boolean,
+  ): Promise<void> {
+    const cuenta = await this.db.cuentas.get(cuentaId);
+
+    if (!cuenta || cuenta.usuarioId !== usuarioId) {
+      throw new ErrorValidacion(
+        'La cuenta no existe o no le pertenece.',
+        'cuentaId',
+      );
+    }
+    if (exigirActiva && !cuenta.activa) {
+      throw new ErrorValidacion(
+        'La cuenta está archivada. No se pueden importar movimientos.',
+        'cuentaId',
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

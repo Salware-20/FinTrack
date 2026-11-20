@@ -35,6 +35,12 @@ const {
   compararNumero,
   compararFecha,
 } = await servidor.ssrLoadModule('/src/dev/componentes/ordenTabla.ts');
+const {
+  detectarSeparador,
+  parsearCsv,
+  normalizarFechaCruda,
+  normalizarMontoCrudo,
+} = await servidor.ssrLoadModule('/src/utils/importadorCsv.ts');
 
 let pruebas = 0;
 function afirmar(condicion, mensaje) {
@@ -528,6 +534,311 @@ try {
 
   await servicio.eliminarPresupuesto(presupuestoAlim.id);
   afirmar((await servicio.listarPresupuestos()).length === 0, 'elimina presupuesto correctamente');
+
+  console.log('\nImportador CSV');
+  afirmar(detectarSeparador(['a,b,c', '1,2,3']) === ',', 'detecta el separador coma');
+  afirmar(detectarSeparador(['a;b;c', '1;2;3']) === ';', 'detecta el separador punto y coma');
+  afirmar(
+    detectarSeparador(['"Perez, Ana";monto', 'x;y']) === ';',
+    'ignora las comas dentro de comillas al detectar el separador',
+  );
+
+  const filasComillas = parsearCsv(
+    'Descripción,Monto\n"PAGO, SUPER ""EL REY""",25000',
+    ',',
+  );
+  afirmar(filasComillas.length === 2, 'el tokenizador produce dos filas');
+  afirmar(
+    filasComillas[1][0] === 'PAGO, SUPER "EL REY"',
+    'respeta comillas, comas internas y comillas escapadas',
+  );
+
+  const filasBom = parsearCsv(
+    '\uFEFFFecha;Monto\r\n2026-03-15;1000\r\n',
+    ';',
+  );
+  afirmar(
+    filasBom[0][0] === 'Fecha' && filasBom[1][0] === '2026-03-15',
+    'quita el BOM y normaliza los saltos CRLF',
+  );
+
+  afirmar(normalizarFechaCruda('15/03/2026') === '2026-03-15', 'fecha DD/MM/YYYY');
+  afirmar(normalizarFechaCruda('2026-03-15') === '2026-03-15', 'fecha AAAA-MM-DD');
+  afirmar(normalizarFechaCruda('5/3/26') === '2026-03-05', 'fecha con año de dos dígitos');
+  afirmar(
+    normalizarFechaCruda('15/03/2026 00:00:00') === '2026-03-15',
+    'fecha con sufijo de hora',
+  );
+  afirmar(normalizarFechaCruda('31/02/2026') === null, 'rechaza fechas inexistentes');
+  afirmar(normalizarFechaCruda('hoy') === null, 'rechaza texto que no es fecha');
+
+  afirmar(normalizarMontoCrudo('₡1.234,56') === 1234.56, 'monto con colones y miles');
+  afirmar(normalizarMontoCrudo('1,234.56') === 1234.56, 'monto con formato estadounidense');
+  afirmar(normalizarMontoCrudo('(12.500,00)') === -12500, 'monto negativo entre paréntesis');
+  afirmar(normalizarMontoCrudo('1.234') === 1234, 'monto con separador de miles');
+  afirmar(normalizarMontoCrudo('-45.000') === -45000, 'monto negativo con guion');
+  afirmar(normalizarMontoCrudo('1234,5') === 1234.5, 'monto con decimales');
+  afirmar(normalizarMontoCrudo('abc') === null, 'rechaza montos no numéricos');
+
+  const cuentaCsv = await servicio.crearCuenta({
+    nombre: 'Banco CSV',
+    tipo: 'banco',
+    saldoInicial: 0,
+  });
+  const categoriasCsv = await servicio.listarCategorias();
+  const catId = (nombre) => categoriasCsv.find((c) => c.nombre === nombre).id;
+
+  const csvDebCred = [
+    'Fecha;Descripción;Débito;Crédito',
+    '15/03/2024;AUTOMERCADO ESCAZU;25000,50;',
+    '16/03/2024;SALARIO PLANILLA;;850000,00',
+    '17/03/2024;GASOLINERA UNO;30000;',
+  ].join('\n');
+
+  const detectadas = await servicio.previsualizarCsv(csvDebCred, cuentaCsv.id);
+  afirmar(detectadas.length === 3, 'detecta los tres movimientos del archivo');
+  afirmar(
+    detectadas[0].tipo === 'gasto' && detectadas[0].monto === 25000.5,
+    'lee la columna Débito como gasto',
+  );
+  afirmar(
+    detectadas[0].categoriaIdSugerida === catId('Supermercado'),
+    'categoriza el supermercado con la categoría real',
+  );
+  afirmar(
+    detectadas[1].tipo === 'ingreso' && detectadas[1].monto === 850000,
+    'lee la columna Crédito como ingreso',
+  );
+  afirmar(
+    detectadas[1].categoriaIdSugerida === catId('Salario'),
+    'categoriza el salario como ingreso',
+  );
+  afirmar(
+    detectadas[2].categoriaIdSugerida === catId('Gasolina'),
+    'categoriza la gasolinera',
+  );
+  afirmar(
+    (await servicio.listarTransacciones({ cuentaId: cuentaCsv.id })).length === 0,
+    'la previsualización no guarda nada',
+  );
+
+  const csvMetadatos = [
+    'Banco de Costa Rica',
+    'Cuenta: CR05015201001024879666',
+    'Saldo disponible: 1.000.000,00',
+    'Fecha;Descripción;Monto',
+    '01/04/2024;UBER TRIP;-12500,00',
+    '02/04/2024;AYA ACUEDUCTO;-8900',
+    ';;TOTAL;',
+  ].join('\n');
+  const conMetadatos = await servicio.previsualizarCsv(
+    csvMetadatos,
+    cuentaCsv.id,
+  );
+  afirmar(conMetadatos.length === 2, 'ignora metadatos previos y filas de totales');
+  afirmar(
+    conMetadatos[0].categoriaIdSugerida === catId('Didi / Uber'),
+    'categoriza Uber/Didi',
+  );
+  afirmar(
+    conMetadatos[1].categoriaIdSugerida === catId('Agua'),
+    'categoriza el recibo de AyA',
+  );
+
+  await servicio.crearTransaccion({
+    monto: 25_000,
+    tipo: 'gasto',
+    fecha: '2024-05-02',
+    descripcion: 'Supermercado del barrio',
+    categoriaId: catId('Supermercado'),
+    cuentaId: cuentaCsv.id,
+  });
+  const csvDuplicados = [
+    'Fecha;Descripción;Débito;Crédito',
+    '02/05/2024;SUPERMERCADO DEL BARRIO;25000;',
+    '02/05/2024;SUPERMERCADO DEL BARRIO;25000;',
+    '03/05/2024;TIENDA LA ESQUINA;25000;',
+  ].join('\n');
+  const conDuplicados = await servicio.previsualizarCsv(
+    csvDuplicados,
+    cuentaCsv.id,
+  );
+  afirmar(
+    conDuplicados[0].posibleDuplicado === true,
+    'marca un movimiento que ya existe en la cuenta',
+  );
+  afirmar(
+    conDuplicados[1].posibleDuplicado === true,
+    'marca la fila repetida dentro del mismo archivo',
+  );
+  afirmar(
+    conDuplicados[2].posibleDuplicado === false,
+    'no marca un movimiento distinto del mismo día',
+  );
+
+  const otraCuenta = await servicio.crearCuenta({
+    nombre: 'Ahorro CSV',
+    tipo: 'ahorro',
+    saldoInicial: 0,
+  });
+  const enOtraCuenta = await servicio.previsualizarCsv(
+    csvDuplicados,
+    otraCuenta.id,
+  );
+  afirmar(
+    enOtraCuenta[0].posibleDuplicado === false,
+    'no marca duplicados de movimientos de otra cuenta',
+  );
+
+  const csvCortas = [
+    'Fecha;Descripción;Monto',
+    '01/06/2024;MAXIMILIANO SERVICIOS;-1000',
+    '02/06/2024;GASOLINERA UNO;-20000',
+    '03/06/2024;BAR LA ESQUINA;-5000',
+    '04/06/2024;AYA ACUEDUCTO;-3000',
+    '05/06/2024;ICE ELECTRICIDAD;-15000',
+  ].join('\n');
+  const cortas = await servicio.previsualizarCsv(csvCortas, cuentaCsv.id);
+  afirmar(
+    cortas[0].categoriaIdSugerida === catId('Otros gastos'),
+    'no confunde "maximiliano" con la clave corta "max"',
+  );
+  afirmar(
+    cortas[1].categoriaIdSugerida === catId('Gasolina'),
+    'la clave corta "uno" coincide como token completo',
+  );
+  afirmar(
+    cortas[2].categoriaIdSugerida === catId('Restaurante'),
+    'la clave corta "bar" coincide como token completo',
+  );
+  afirmar(
+    cortas[3].categoriaIdSugerida === catId('Agua'),
+    'la clave corta "aya" coincide como token completo',
+  );
+  afirmar(
+    cortas[4].categoriaIdSugerida === catId('Luz'),
+    'la clave corta "ice" coincide como token completo',
+  );
+
+  const antesAtomicidad = (
+    await servicio.listarTransacciones({ cuentaId: cuentaCsv.id })
+  ).length;
+  const catIngresoCsv = categoriasCsv.find((c) => c.tipo === 'ingreso');
+  const filasAtomicas = [
+    {
+      id: 'csv-1',
+      fecha: '2024-07-01',
+      descripcion: 'Fila válida',
+      monto: 1000,
+      tipo: 'gasto',
+      categoriaIdSugerida: catId('Supermercado'),
+      metodoPagoSugerido: 'efectivo',
+      posibleDuplicado: false,
+      numeroFila: 1,
+    },
+    {
+      id: 'csv-2',
+      fecha: '2024-07-02',
+      descripcion: 'Fila con categoría cruzada',
+      monto: 2000,
+      tipo: 'gasto',
+      categoriaIdSugerida: catIngresoCsv.id,
+      metodoPagoSugerido: 'efectivo',
+      posibleDuplicado: false,
+      numeroFila: 2,
+    },
+  ];
+  await esperarError(
+    () => servicio.confirmarImportacionCsv(cuentaCsv.id, filasAtomicas),
+    'rechaza una fila con categoría de tipo distinto',
+  );
+  afirmar(
+    (await servicio.listarTransacciones({ cuentaId: cuentaCsv.id })).length ===
+      antesAtomicidad,
+    'la importación fallida no guarda ninguna fila (atómica)',
+  );
+  await esperarError(
+    () => servicio.confirmarImportacionCsv(cuentaCsv.id, []),
+    'rechaza una importación vacía',
+  );
+
+  await servicio.actualizarCuenta(cuentaCsv.id, { activa: false });
+  afirmar(
+    (await servicio.previsualizarCsv(csvDebCred, cuentaCsv.id)).length === 3,
+    'permite previsualizar en una cuenta archivada',
+  );
+  await esperarError(
+    () => servicio.confirmarImportacionCsv(cuentaCsv.id, detectadas),
+    'rechaza importar en una cuenta archivada',
+  );
+  await servicio.actualizarCuenta(cuentaCsv.id, { activa: true });
+
+  await servicio.registrar({
+    nombre: 'Carla Vega',
+    correo: 'carla@example.com',
+    contrasena: 'claveCarla123',
+  });
+  const cuentaCarla = (await servicio.listarCuentas())[0];
+  await servicio.cerrarSesion();
+  await servicio.iniciarSesion('beto@example.com', 'otraClave456');
+  await esperarError(
+    () => servicio.previsualizarCsv(csvDebCred, cuentaCarla.id),
+    'no permite previsualizar la cuenta de otro usuario',
+  );
+  await esperarError(
+    () => servicio.confirmarImportacionCsv(cuentaCarla.id, detectadas),
+    'no permite importar en la cuenta de otro usuario',
+  );
+
+  const importados = await servicio.confirmarImportacionCsv(
+    cuentaCsv.id,
+    detectadas,
+  );
+  afirmar(importados === 3, 'importa los movimientos confirmados');
+  const trxCuentaCsv = await servicio.listarTransacciones({
+    cuentaId: cuentaCsv.id,
+  });
+  afirmar(
+    trxCuentaCsv.length === antesAtomicidad + 3,
+    'guarda exactamente las filas confirmadas',
+  );
+  afirmar(
+    trxCuentaCsv.some(
+      (transaccion) =>
+        transaccion.fecha === '2024-03-16' &&
+        transaccion.tipo === 'ingreso' &&
+        transaccion.monto === 850_000,
+    ),
+    'guarda el ingreso con su fecha y monto normalizados',
+  );
+  afirmar(
+    trxCuentaCsv.every((transaccion) => transaccion.cuentaId === cuentaCsv.id),
+    'todos los movimientos quedan en la cuenta indicada',
+  );
+  afirmar(
+    trxCuentaCsv.filter((transaccion) =>
+      transaccion.etiquetas.includes('importado'),
+    ).length === 3,
+    'marca los movimientos importados con su etiqueta',
+  );
+  const saldoCsv = (await servicio.obtenerSaldos()).find(
+    (item) => item.cuentaId === cuentaCsv.id,
+  );
+  afirmar(
+    saldoCsv.saldo === 769_999.5,
+    'el saldo de la cuenta refleja el neto importado',
+  );
+
+  const csvExportado = await servicio.exportarTransaccionesCsv();
+  const totalTransacciones = (await servicio.listarTransacciones()).length;
+  const reimportadas = await servicio.previsualizarCsv(
+    csvExportado,
+    cuentaCsv.id,
+  );
+  afirmar(
+    reimportadas.length === totalTransacciones,
+    'reconoce el CSV exportado por la propia aplicación',
+  );
 
   // Ordenamiento de tablas de la demo
   const filasNumero = [10, 2, 33].map((valor) => ({ valor }));

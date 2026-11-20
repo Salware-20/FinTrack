@@ -29,6 +29,7 @@ import {
 } from '../../utils/formato';
 import { AlertaErrorCarga, Cargando } from '../componentes/Estado';
 import { useNotificaciones } from '../componentes/notificacionesContexto';
+import { PanelImportadorCsv } from '../componentes/PanelImportadorCsv';
 import { TablaRecurrencias } from '../componentes/TablaRecurrencias';
 import { ThOrdenable } from '../componentes/ThOrdenable';
 import { useOrdenTabla } from '../componentes/useOrdenTabla';
@@ -122,6 +123,7 @@ export function Movimientos() {
   const [version, setVersion] = useState(0);
 
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
+  const [mostrarImportador, setMostrarImportador] = useState(false);
   const [formulario, setFormulario] = useState({ ...FORMULARIO_INICIAL });
   const [guardando, setGuardando] = useState(false);
 
@@ -425,6 +427,13 @@ export function Movimientos() {
           >
             Cargar ejemplos
           </Button>
+          <Button
+            variant="outline-primary"
+            disabled={guardando}
+            onClick={() => setMostrarImportador((visible) => !visible)}
+          >
+            {mostrarImportador ? 'Cerrar importador' : 'Importar estado de cuenta'}
+          </Button>
           <Button onClick={() => {
             limpiarTodo();
             setMostrarFormulario((visible) => !visible);
@@ -435,6 +444,16 @@ export function Movimientos() {
       </div>
 
       <AlertaErrorCarga mensaje={errorCarga} onReintentar={reintentarCarga} />
+
+      {mostrarImportador && (
+        <PanelImportadorCsv
+          cuentas={cuentas}
+          categorias={categorias}
+          ocupado={guardando}
+          onImportado={recargar}
+          onCerrar={() => setMostrarImportador(false)}
+        />
+      )}
 
       {mostrarFormulario && (
         <Card className="mb-4">

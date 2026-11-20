@@ -244,6 +244,33 @@ export interface NuevaTransaccion {
   etiquetas?: string[];
 }
 
+/**
+ * Movimiento detectado en un CSV bancario, listo para revisión del usuario.
+ *
+ * No se persiste: es el contrato entre el motor de importación y la interfaz.
+ * La selección de qué filas se importan no vive aquí: la maneja la pantalla y
+ * solo las filas elegidas llegan a `confirmarImportacionCsv`.
+ */
+export interface FilaCsvDetectada {
+  /** Clave estable para React y para la selección en la tabla. */
+  id: string;
+  /** Fecha normalizada, formato AAAA-MM-DD. */
+  fecha: string;
+  descripcion: string;
+  /** Siempre positivo; el signo lo aporta `tipo`. */
+  monto: number;
+  tipo: TipoTransaccion;
+  /** Categoría real del usuario sugerida; '' si no hay ninguna del tipo. */
+  categoriaIdSugerida: string;
+  metodoPagoSugerido: MetodoPago;
+  /** Coincide con un movimiento ya existente o con otra fila del archivo. */
+  posibleDuplicado: boolean;
+  /** Posición de la fila de datos en el archivo (1 = tras la cabecera). */
+  numeroFila: number;
+  /** Detalle opcional para mostrar junto a la fila (ej. motivo del duplicado). */
+  advertencia?: string;
+}
+
 /** Datos necesarios para crear una regla de movimiento recurrente. */
 export interface NuevaRecurrencia {
   /** Siempre positivo; el signo lo define `tipo`. */

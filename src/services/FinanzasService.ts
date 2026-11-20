@@ -12,6 +12,7 @@ import type {
   ConfiguracionUsuario,
   EstadoPresupuesto,
   EstadoResultados,
+  FilaCsvDetectada,
   FiltroTransacciones,
   NuevaCategoria,
   NuevaCuenta,
@@ -100,6 +101,24 @@ export interface FinanzasService {
     cambios: Partial<NuevaTransaccion>,
   ): Promise<Transaccion>;
   eliminarTransaccion(id: string): Promise<void>;
+
+  // --- Importación de estados de cuenta -------------------------------------
+  /**
+   * Analiza un CSV bancario y devuelve los movimientos detectados sin guardar
+   * nada. La cuenta debe existir y pertenecer al usuario de la sesión.
+   */
+  previsualizarCsv(
+    contenidoCsv: string,
+    cuentaId: string,
+  ): Promise<FilaCsvDetectada[]>;
+  /**
+   * Inserta de forma atómica los movimientos revisados y devuelve cuántos se
+   * guardaron. Si una sola fila es inválida se rechaza la operación completa.
+   */
+  confirmarImportacionCsv(
+    cuentaId: string,
+    filas: FilaCsvDetectada[],
+  ): Promise<number>;
 
   // --- Recurrencias ---------------------------------------------------------
   listarRecurrencias(): Promise<Recurrencia[]>;
