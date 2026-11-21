@@ -11,30 +11,40 @@ Aplicación web **local-first** para registrar ingresos y gastos, controlar cuen
 
 | Área | Estado | Detalle |
 | --- | --- | --- |
-| Dominio (`src/models`) | ✅ Listo | Usuario, Cuenta, Categoría, Transacción, Transferencia y Recurrencia |
-| Persistencia local | ✅ Listo | Dexie sobre IndexedDB (esquema v2) |
+| Dominio (`src/models`) | ✅ Listo | Usuario, Cuenta, Categoría, Transacción, Transferencia, Recurrencia y Presupuesto |
+| Persistencia local | ✅ Listo | Dexie sobre IndexedDB (esquema v3) |
 | Autenticación local | ✅ Listo | Registro abierto, login, código de recuperación |
 | Aislamiento por usuario | ✅ Listo | Todas las entidades llevan `usuarioId` y se filtran por sesión |
-| Contrato de datos v2 | ✅ Listo | `FinanzasService` + `LocalFinanzasService` |
+| Contrato de datos v3 | ✅ Listo | `FinanzasService` + `LocalFinanzasService` |
 | Movimientos recurrentes | ✅ Listo | Reglas diarias, semanales y mensuales; generación solo al llegar la fecha |
+| Presupuestos y alertas | ✅ Listo | Límite mensual por categoría, consumo con subcategorías, avisos y concentración de gasto |
+| Meta de ahorro | ✅ Listo | Meta mensual en la configuración con avance en el resumen |
 | Reportes | ✅ Listo | Estado de resultados, gastos por categoría, PDF y CSV |
-| Interfaz de producto | 🚧 Fuera de esta entrega | La construirá el compañero de frontend |
-| Demo funcional | ✅ Listo | `demo.html`: acceso, dashboard, movimientos, cuentas, categorías, reportes y perfil |
+| Análisis financiero | ✅ Listo | Detector de gastos hormiga y simulador «¿me alcanza?» en la demo |
+| Interfaz de producto | ✅ Listo | `src/App.tsx`: resumen, movimientos, cuentas, categorías, reportes y perfil; diseño propio y responsive |
+| Demo funcional | ✅ Referencia | `demo.html`: misma funcionalidad con React Bootstrap, útil para comparar el diseño |
+| Tablas ordenables | ✅ Listo | Ciclo mayor a menor → menor a mayor → orden original en la app y en la demo |
 | Modo offline (PWA) | ✅ Listo | Manifiesto, service worker y precache; instalable y 100 % offline |
-| Sincronización remota | ⏳ Futuro | Documentada como migración opcional |
+| Despliegue público | ⏳ Pendiente | Guía paso a paso para Vercel incluida en este README |
+| Sincronización remota | ⏳ Futuro | En el roadmap (Supabase + RLS); no implementada |
 
-### Alcance de esta entrega
+### Alcance actual
 
 1. Modelo de dominio completo con validaciones y serialización.
-2. Persistencia real en IndexedDB mediante Dexie.
+2. Persistencia real en IndexedDB mediante Dexie, con migraciones sin pérdida de datos (v1 → v2 → v3).
 3. Servicio único de datos con sesión, aislamiento por usuario y reportes.
 4. Seguridad local: hash PBKDF2, sal por credencial y código de recuperación rotativo.
-5. Exportación de respaldos JSON, CSV y reportes PDF.
+5. Exportación de respaldos JSON (v3), CSV y reportes PDF.
 6. Movimientos recurrentes diarios, semanales y mensuales sin proyecciones futuras.
-7. Demo funcional con React + Bootstrap, **sin CSS propio**.
-8. PWA instalable con manifiesto, service worker y precache de todos los assets.
+7. Presupuestos mensuales por categoría con consumo acumulado y alertas de concentración.
+8. Meta de ahorro mensual y progreso en tiempo real.
+9. Interfaz de producto en `src/App.tsx` y `src/paginas`: diseño propio en `src/index.css`, responsive y con navegación por estado.
+10. Tablas ordenables por clic en el encabezado (y selector de orden en móvil).
+11. Demo de referencia en `src/dev` + `demo.html`, construida solo con React Bootstrap.
+12. PWA instalable con manifiesto, service worker y precache de todos los assets.
+13. Análisis financiero local: detector de gastos hormiga y simulador de escenarios con el flujo real del usuario (demo de referencia).
 
-**Regla de la entrega:** toda la interfaz visual vive solo en `src/dev` y `demo.html`. **No se modificaron** `src/App.tsx`, `src/main.tsx`, `src/App.css` ni `src/index.css`; el compañero de frontend los trabajará después. La demo se apoya únicamente en React Bootstrap.
+**Dos entradas, un solo servicio:** `index.html` monta la aplicación real (`src/main.tsx` → `App.tsx`); `demo.html` monta la demo (`src/dev/main-demo.tsx`). Ambas consumen `finanzasService`, pero **solo la app real entra al build de producción**. La demo se conserva como referencia visual y funcional.
 
 ---
 
@@ -44,8 +54,10 @@ Aplicación web **local-first** para registrar ingresos y gastos, controlar cuen
 | --- | --- |
 | Frontend | React 19 + TypeScript 6 |
 | Empaquetador | Vite 8 |
-| UI | Bootstrap 5 + React Bootstrap (sin CSS propio) |
-| Persistencia | Dexie 4 + IndexedDB |
+| UI | Bootstrap 5 + React Bootstrap + CSS propio (`src/index.css`) |
+| Iconografía | Bootstrap Icons |
+| Tipografía | IBM Plex Sans (`@fontsource`) |
+| Persistencia | Dexie 4 + IndexedDB (esquema v3) |
 | Gráficos | Chart.js 4 + react-chartjs-2 |
 | Reportes | jsPDF + jspdf-autotable |
 | PWA | `vite-plugin-pwa` 2 + Workbox 7 |
@@ -56,10 +68,10 @@ Aplicación web **local-first** para registrar ingresos y gastos, controlar cuen
 
 ## 🚀 Puesta en marcha
 
-Requisitos: Node.js 20 o superior y npm.
+Requisitos: Node.js **22 LTS** o superior (Vite 8 exige ≥ 20.19 o ≥ 22.12) y npm.
 
 ```bash
-npm install
+npm ci          # instalación reproducible desde package-lock.json
 npm run dev
 ```
 
@@ -72,9 +84,10 @@ npm run dev
 | `npm run preview` | Sirve el build de producción (necesario para probar la PWA) |
 | `node scripts/generar-iconos.mjs` | Regenera `public/favicon.svg` y los PNG de la PWA desde el logotipo en pixel art |
 
-**Demo funcional:** `http://localhost:5173/demo.html`
+**Aplicación:** `http://localhost:5173/` (entrada real, `index.html`)
+**Demo de referencia:** `http://localhost:5173/demo.html`
 
-La demo no forma parte del build de producción: `vite build` solo incluye `index.html`. Sirve como referencia visual y funcional para el frontend.
+Solo la aplicación real forma parte del build de producción: `vite build` incluye únicamente `index.html`. La demo se conserva como referencia visual y funcional, y no se despliega.
 
 ---
 
@@ -96,27 +109,49 @@ app-contabilidad/
 ├── src/
 │   ├── assets/
 │   │   └── Logotipo.png            # Logotipo 16 x 16 (fuente de los iconos)
+│   ├── componentes/                # UI compartida de la aplicación
+│   │   ├── Avance.tsx              # Progreso de presupuestos y meta de ahorro
+│   │   ├── Avisos.tsx              # Toasts de la aplicación
+│   │   ├── ayudas.ts               # Utilidades de presentación
+│   │   ├── BarraLateral.tsx        # Navegación lateral y menú inferior móvil
+│   │   ├── Confirmar.tsx           # Diálogo de confirmación
+│   │   ├── ejemplos.ts             # Carga de 8 movimientos de prueba
+│   │   ├── Emoji.tsx               # Emoji o icono de categoría
+│   │   ├── Encabezado.tsx          # Cabecera de sección
+│   │   ├── Graficos.tsx            # Gráfico de flujo y de categorías
+│   │   ├── Marca.tsx               # Logotipo + nombre
+│   │   ├── orden.ts                # Comparadores y ciclo de orden
+│   │   ├── paginas.ts              # Páginas navegables e iconos
+│   │   ├── SelectorOrden.tsx       # Orden por lista en móvil
+│   │   ├── ThOrdenable.tsx         # Encabezado de tabla ordenable
+│   │   ├── useAvisos.ts            # Hook de toasts
+│   │   └── useOrden.ts             # Hook de orden de tablas
 │   ├── config/
 │   │   └── app.ts                  # Moneda, locale, versión de BD, sesión, hash
 │   ├── db/
-│   │   ├── baseDatos.ts            # Esquema Dexie v2 (incluye recurrencias)
+│   │   ├── baseDatos.ts            # Esquema Dexie v3 (incluye presupuestos)
 │   │   └── semilla.ts              # 34 categorías base, cuenta y configuración
-│   ├── dev/                        # Demo: TODO lo visual
+│   ├── dev/                        # Demo de referencia (no entra al build)
 │   │   ├── componentes/
 │   │   │   ├── Estado.tsx          # Cargando, AlertaErrorCarga, TarjetaKpi
 │   │   │   ├── ErrorBoundary.tsx   # Límite de errores de render
 │   │   │   ├── Graficos.tsx        # Gráfico de flujo y de categorías
 │   │   │   ├── Notificaciones.tsx  # Provider y toasts de React Bootstrap
 │   │   │   ├── notificacionesContexto.ts # Contexto y useNotificaciones()
+│   │   │   ├── ordenTabla.ts       # Comparadores de la demo
 │   │   │   ├── TablaRecurrencias.tsx # Reglas recurrentes: pausar y eliminar
-│   │   │   └── useErroresFormulario.ts   # Errores inline por campo
+│   │   │   ├── tablaOrdenable.css  # Único CSS propio de la demo
+│   │   │   ├── ThOrdenable.tsx     # Encabezado ordenable de la demo
+│   │   │   ├── useErroresFormulario.ts   # Errores inline por campo
+│   │   │   └── useOrdenTabla.ts    # Hook de orden de la demo
 │   │   ├── pantallas/
 │   │   │   ├── Acceso.tsx          # Login, registro, recuperación, código
 │   │   │   ├── Dashboard.tsx       # KPIs, gráficos, últimos movimientos
 │   │   │   ├── Movimientos.tsx     # Alta (con repetición), filtros y eliminación
 │   │   │   ├── Cuentas.tsx         # Saldos, cuentas y transferencias
-│   │   │   ├── Categorias.tsx      # Árbol ingreso/gasto y alta
+│   │   │   ├── Categorias.tsx      # Árbol ingreso/gasto, presupuestos y alta
 │   │   │   ├── Reportes.tsx        # Periodo, estado de resultados, PDF y CSV
+│   │   │   ├── Analisis.tsx        # Detector de gastos hormiga y simulador
 │   │   │   └── MiCuenta.tsx        # Perfil, contraseña, respaldo y borrado
 │   │   ├── DemoDatos.tsx           # Shell: sesión, navbar y navegación
 │   │   ├── main-demo.tsx           # Montaje de la demo
@@ -128,31 +163,43 @@ app-contabilidad/
 │   │   ├── Transaccion.ts          # Ingreso o gasto
 │   │   ├── Transferencia.ts        # Movimiento entre cuentas
 │   │   ├── Recurrencia.ts          # Regla de gasto/ingreso repetitivo
+│   │   ├── Presupuesto.ts          # Límite mensual por categoría
 │   │   ├── errores.ts              # ErrorValidacion
 │   │   ├── tipos.ts                # Constantes, tipos y DTOs
 │   │   └── index.ts                # Barrel del dominio
+│   ├── paginas/                    # Pantallas de la aplicación
+│   │   ├── Acceso.tsx              # Login, registro y recuperación
+│   │   ├── Resumen.tsx             # KPIs, alertas, meta de ahorro y cuentas
+│   │   ├── Movimientos.tsx         # Alta (con repetición), filtros y edición
+│   │   ├── Cuentas.tsx             # Saldos, cuentas y transferencias
+│   │   ├── Categorias.tsx          # Árbol, presupuestos y consumo
+│   │   ├── Reportes.tsx            # Periodo, estado de resultados, PDF y CSV
+│   │   └── MiCuenta.tsx            # Perfil, contraseña, meta, respaldo y borrado
 │   ├── services/
 │   │   ├── FinanzasService.ts      # Contrato único (interfaz)
 │   │   ├── LocalFinanzasService.ts # Implementación IndexedDB
 │   │   └── index.ts                # Singleton `finanzasService`
 │   ├── utils/
 │   │   ├── criptografia.ts         # PBKDF2, sales y códigos
+│   │   ├── analisisFinanciero.ts   # Detector y simulador puros (sin IndexedDB)
 │   │   ├── descargas.ts            # Descargar y leer archivos
 │   │   ├── errores.ts              # Normalizador de errores de la UI
 │   │   ├── formato.ts              # Moneda CRC, fechas y etiquetas
 │   │   ├── numeros.ts              # Redondeo y sumas
 │   │   ├── recurrencia.ts          # Cálculo de ocurrencias y fin de mes
 │   │   └── reportesPdf.ts          # Reportes con jsPDF + AutoTable
-│   ├── App.tsx                     # Interfaz real (sin cambios)
-│   └── main.tsx                    # Montaje real (sin cambios)
+│   ├── App.css                     # Vacío: el diseño vive en index.css
+│   ├── App.tsx                     # Interfaz de producto
+│   ├── index.css                   # Sistema de diseño: tokens, layout y responsive
+│   └── main.tsx                    # Montaje real
 └── README.md
 ```
 
 ### Arquitectura local-first
 
 ```
-Demo (React + Bootstrap)
-        │  solo conoce la interfaz
+App real / Demo (React + Bootstrap + CSS propio)
+        │  solo conocen la interfaz
         ▼
 finanzasService  ◄── contrato único (src/services/index.ts)
         │
@@ -200,11 +247,13 @@ erDiagram
     USUARIO ||--o{ TRANSFERENCIA : "mueve"
     USUARIO ||--o{ RECURRENCIA : "programa"
     USUARIO ||--|| CONFIGURACION : "prefiere"
+    USUARIO ||--o{ PRESUPUESTO : "limita"
     CUENTA ||--o{ TRANSACCION : "afecta"
     CATEGORIA ||--o{ TRANSACCION : "clasifica"
     CUENTA ||--o{ TRANSFERENCIA : "origen/destino"
     CUENTA ||--o{ RECURRENCIA : "afecta"
     CATEGORIA ||--o{ RECURRENCIA : "clasifica"
+    CATEGORIA ||--o{ PRESUPUESTO : "limita"
     RECURRENCIA ||--o{ TRANSACCION : "genera"
 ```
 
@@ -307,7 +356,30 @@ La regla **no crea movimientos virtuales ni proyecciones**: cuando `proximaFecha
 
 ### `ConfiguracionUsuario`
 
-`usuarioId`, `moneda` (`CRC`), `locale` (`es-CR`) y `tema` (`claro`).
+| Campo | Tipo | Descripción |
+| --- | --- | --- |
+| `usuarioId` | `string` | Dueño de la configuración |
+| `moneda` | `string` | `CRC` por defecto |
+| `locale` | `string` | `es-CR` |
+| `tema` | `"claro"` \| `"oscuro"` | Preferencia visual |
+| `metaAhorroMensual` | `number?` | Meta de ahorro del mes; `0` o ausente equivale a «sin meta» |
+
+### `Presupuesto`
+
+| Campo | Tipo | Descripción |
+| --- | --- | --- |
+| `id` | `string` | Identificador único (`pre-...`) |
+| `usuarioId` | `string` | Dueño del límite |
+| `categoriaId` | `string` | Categoría de gasto a limitar |
+| `montoLimite` | `number` | Límite mensual positivo, 2 decimales |
+| `periodo` | `string \| null` | Mes concreto `AAAA-MM` o `null` para repetirlo cada mes |
+| `alertaPorcentaje` | `number` | Consumo que dispara la advertencia (1–100, por defecto 80) |
+| `activo` | `boolean` | Un presupuesto inactivo no se evalúa |
+| `creadoEn` | `string` | ISO 8601 |
+
+Miembro calculado: `recurrente` (`periodo === null`) y método `aplicaA(periodo)`.
+
+El presupuesto **no almacena el gasto**: al consultar un periodo, el servicio suma las transacciones confirmadas de la categoría **y de sus subcategorías**. Así el consumo nunca queda desincronizado del historial. Los tipos calculados `EstadoPresupuesto` y `AlertaConcentracionGasto` viven en `src/models/tipos.ts`.
 
 ### Enumeraciones (sin `enum`)
 
@@ -344,6 +416,19 @@ TipoCuenta.Banco;        // 'banco'
 18. Las ocurrencias se guardan **confirmadas** y quedan vinculadas con `recurrenciaId` y `recurrenciaFecha`.
 19. En frecuencias mensuales se usa `diaAncla` recortado al último día del mes: 31 de enero → 28/29 de febrero → 31 de marzo, sin desplazamiento permanente.
 20. Al archivar una cuenta se pausan sus reglas; al eliminarlas o pausarlas, las transacciones ya generadas se conservan como historial.
+21. Un presupuesto exige un límite finito **mayor que cero** (2 decimales) y una categoría de **gasto** del mismo usuario. No se admite más de un presupuesto activo por categoría.
+22. `periodo` debe ser `AAAA-MM` o `null`; `null` significa que el límite se repite todos los meses. `alertaPorcentaje` va de 1 a 100 (por defecto 80).
+23. Solo se evalúan presupuestos **activos** y aplicables al periodo consultado.
+24. El consumo suma los **gastos confirmados** de la categoría y de todas sus subcategorías; un límite en Alimentación acumula Supermercado, Cafetería, etc.
+25. Estado del presupuesto: **Normal** por debajo del umbral de alerta, **Advertencia** al alcanzarlo y **Excedido** al llegar o superar el 100 %.
+26. La alerta de concentración marca las categorías cuyo gasto alcanza el **30 %** del gasto total del periodo (umbral configurable) y las ordena de mayor a menor porcentaje.
+27. La meta de ahorro mensual se guarda en `metaAhorroMensual`; `0` o ausente equivale a «sin meta». El avance es `max(0, balance del mes) / meta`.
+28. Al importar un respaldo se reemplazan los datos del usuario y se regeneran los ids; se aceptan versiones **1, 2 y 3**, y se rechazan versiones futuras.
+29. El detector de gastos hormiga solo considera **gastos confirmados** del periodo cuyo monto sea **menor o igual** al umbral (₡10 000 por defecto). Las descripciones se agrupan normalizando mayúsculas, tildes, puntuación, ruido bancario y tokens numéricos; la etiqueta visible es la descripción original más frecuente.
+30. El impacto anual del detector es una proyección **lineal** (`total del periodo × 12`). Si el total de fugas o el gasto del periodo es `0`, los porcentajes se devuelven explícitamente como `0` (sin `NaN`).
+31. El simulador promedia hasta los **últimos 3 meses cerrados con datos**. El mes en curso solo se usa cuando no existe historial anterior, para no distorsionar el cálculo con un mes incompleto.
+32. Para proyectar el flujo, el simulador mensualiza las reglas activas (diaria `×365/12`, semanal `×52/12`, mensual `×1`), descarta las vencidas por `fechaFin` y las que empiezan después del mes siguiente, y excluye del promedio los movimientos ya generados por esas reglas para no contarlos dos veces.
+33. Un recorte de categoría incluye sus **subcategorías** y las reglas recurrentes de esa rama. El escenario es `viable` solo si la cuota cabe en el flujo proyectado **y** se conserva la meta de ahorro mensual; si cabe pero sacrifica la meta, el diagnóstico es `warning`; si no cabe, `danger`.
 
 ---
 
@@ -367,6 +452,7 @@ La interfaz **no recibe `usuarioId`**: el servicio lo toma de la sesión activa.
 | `recuperarContrasena(correo, codigo, nueva)` | `ResultadoRecuperacion` | Rota el código de recuperación |
 | `eliminarCuenta(contrasena)` | `void` | Borra usuario y todos sus datos |
 | `obtenerConfiguracion()` | `ConfiguracionUsuario` | Crea la configuración si falta |
+| `actualizarConfiguracion(cambios)` | `ConfiguracionUsuario` | Cambios parciales; incluye `metaAhorroMensual` |
 
 ### Cuentas
 
@@ -423,6 +509,46 @@ const { recurrencia, generadas } = await finanzasService.crearRecurrencia({
 // Si empieza el 2026-12-01, generadas === 0 y proximaFecha === '2026-12-01'.
 ```
 
+### Presupuestos
+
+| Método | Devuelve | Notas |
+| --- | --- | --- |
+| `listarPresupuestos()` | `Presupuesto[]` | Incluye activos e inactivos |
+| `crearPresupuesto(datos)` | `Presupuesto` | Valida categoría de gasto y límite |
+| `actualizarPresupuesto(id, cambios)` | `Presupuesto` | Límite, periodo, alerta o estado |
+| `eliminarPresupuesto(id)` | `void` | Borra el límite; conserva el historial |
+| `obtenerEstadoPresupuestos(periodo?)` | `EstadoPresupuesto[]` | Consumo del mes (por defecto, el actual), incluye subcategorías |
+| `obtenerAlertasConcentracion(periodo?, umbral?)` | `AlertaConcentracionGasto[]` | Categorías que superan el umbral (30 % por defecto) |
+
+```ts
+const estados = await finanzasService.obtenerEstadoPresupuestos('2026-11');
+
+// Cada fila trae límite, gastado, disponible, porcentaje y estadoAlerta:
+// 'normal' | 'advertencia' | 'excedido'.
+```
+
+### Análisis financiero
+
+| Método | Devuelve | Notas |
+| --- | --- | --- |
+| `analizarGastosHormiga(periodo?, umbralMonto?)` | `AnalisisGastosHormiga` | Periodo actual y ₡10 000 por defecto; solo gastos confirmados |
+| `simularEscenario(params)` | `ResultadoSimulacion` | Compra/meta en cuotas, recorte opcional y meta de ahorro |
+
+```ts
+const analisis = await finanzasService.analizarGastosHormiga('2026-11', 10_000);
+// analisis.fugas: ranking por frecuencia e impacto anual
+
+const escenario = await finanzasService.simularEscenario({
+  montoObjetivo: 450_000,
+  meses: 6,
+  categoriaRecorteId: 'cat-...',
+  porcentajeRecorte: 20,
+});
+// escenario.diagnostico: 'success' | 'warning' | 'danger'
+```
+
+`ParametrosSimulacion` exige `montoObjetivo > 0` y `meses` entero `>= 1`; `porcentajeRecorte` va de 0 a 100 y, si es mayor que 0, requiere una categoría de **gasto** del usuario. Los cálculos puros viven en `src/utils/analisisFinanciero.ts` (`detectarGastosHormiga`, `calcularSimulacion`, `mensualizarMontoRecurrente`, `sumarMeses`) y no dependen de IndexedDB ni de React.
+
 ### Reportes y datos
 
 | Método | Devuelve | Notas |
@@ -433,7 +559,7 @@ const { recurrencia, generadas } = await finanzasService.crearRecurrencia({
 | `exportarRespaldo()` | `RespaldoFinanzas` | JSON completo del usuario |
 | `importarRespaldo(respaldo)` | `void` | Reemplaza datos; **regenera ids y remapea referencias** |
 | `exportarTransaccionesCsv(filtro?)` | `string` | Cabecera en español, separador coma |
-| `resetearDatos()` | `void` | Borra movimientos y reglas, y restaura categorías base |
+| `resetearDatos()` | `void` | Borra movimientos, reglas, presupuestos y configuración, y restaura categorías y cuenta base |
 
 ### Filtros disponibles
 
@@ -457,7 +583,7 @@ interface FiltroTransacciones {
 
 ## 🗄️ Persistencia (IndexedDB con Dexie)
 
-Base: **`fintrack`**, versión de esquema **2** (`src/db/baseDatos.ts`). Al cambiar tablas o índices hay que incrementar `versionBaseDatos` en `src/config/app.ts`. La migración v1 → v2 agrega la tabla de reglas y el índice `recurrenciaId` sin perder datos existentes.
+Base: **`fintrack`**, versión de esquema **3** (`src/db/baseDatos.ts`). Al cambiar tablas o índices hay que incrementar `versionBaseDatos` en `src/config/app.ts`. Las migraciones son incrementales y sin pérdida de datos: v2 añade reglas recurrentes y v3 agrega los presupuestos.
 
 | Tabla | Clave primaria | Índices |
 | --- | --- | --- |
@@ -467,6 +593,7 @@ Base: **`fintrack`**, versión de esquema **2** (`src/db/baseDatos.ts`). Al camb
 | `transacciones` | `id` | `usuarioId`, `cuentaId`, `categoriaId`, `fecha`, `recurrenciaId`, `[usuarioId+fecha]`, `[usuarioId+cuentaId]`, `[usuarioId+categoriaId]`, `[usuarioId+recurrenciaId]` |
 | `transferencias` | `id` | `usuarioId`, `cuentaOrigenId`, `cuentaDestinoId`, `[usuarioId+fecha]` |
 | `recurrencias` | `id` | `usuarioId`, `[usuarioId+activa]` |
+| `presupuestos` | `id` | `usuarioId`, `categoriaId`, `[usuarioId+categoriaId]`, `[usuarioId+activo]` |
 | `configuracion` | `usuarioId` | — |
 
 La tabla `usuarios` guarda además `hashContrasena`, `sal`, `hashRecuperacion` y `salRecuperacion`; esos campos nunca salen del servicio.
@@ -479,41 +606,44 @@ La tabla `usuarios` guarda además `hashContrasena`, `sal`, `hashRecuperacion` y
 
 ### Respaldos
 
-- Se exportan como JSON con `version`, `exportadoEn`, usuario y todas las colecciones, incluidas las reglas recurrentes.
-- La versión actual es **2**. La importación acepta respaldos **v1** (sin reglas) y **v2**; se rechazan versiones futuras o archivos incompletos.
-- Al importar se valida la versión y la integridad de las referencias, incluidas las de las reglas.
+- Se exportan como JSON con `version`, `exportadoEn`, usuario y todas las colecciones, incluidas reglas y presupuestos.
+- La versión actual es **3** (sigue `versionBaseDatos`). La importación acepta respaldos **v1**, **v2** y **v3**; se rechazan versiones futuras o archivos incompletos.
+- Al importar se valida la versión y la integridad de las referencias, incluidas reglas y presupuestos.
 - Los ids se **regeneran** y las relaciones se remapean (también `recurrenciaId` en cada movimiento) para evitar colisiones cuando varios usuarios comparten la misma base local.
 
 ---
 
-## 🖥️ Demo funcional (`/demo.html`)
+## 🖥️ Interfaz de producto
+
+`index.html` monta `src/main.tsx` → `src/App.tsx`. La navegación es por estado (no hay router instalado) y la sesión se retoma al abrir la pestaña. Antes de mostrar el resumen, la app procesa las reglas recurrentes vencidas para que los saldos ya las incluyan.
 
 | Pantalla | Contenido |
 | --- | --- |
 | **Acceso** | Login, registro abierto, recuperación con código y pantalla de código único |
-| **Dashboard** | KPIs del mes, patrimonio, flujo mensual, gastos por categoría y últimos movimientos |
-| **Movimientos** | Alta con tipo/monto/fecha/categoría/cuenta/método/estado/etiquetas y casilla **Repetir** (diaria, semanal o mensual, con fin opcional); administración de reglas (pausar, reanudar, eliminar), filtros y eliminación; botón de 8 ejemplos; encabezados ordenables |
-| **Cuentas** | Saldos calculados, alta y archivado de cuentas, transferencias entre cuentas; encabezados ordenables |
-| **Categorías** | Árbol ingreso/gasto con uso real y alta de raíces o subcategorías; encabezados ordenables (raíces y hermanos) |
-| **Reportes** | Rango de fechas con atajos, estado de resultados, gráficos, PDF y CSV; encabezados ordenables dentro de cada grupo |
-| **Mi cuenta** | Perfil, cambio de contraseña, respaldo exportar/importar, reset y eliminación |
+| **Resumen** | KPIs del mes, patrimonio, balance en formato de libro contable, alertas de concentración, avance de presupuestos, meta de ahorro, cuentas y últimos movimientos |
+| **Movimientos** | Alta con tipo/monto/fecha/categoría/cuenta/método/estado/etiquetas y casilla **Repetir**; edición y eliminación, filtros, botón de 8 ejemplos y administración de reglas |
+| **Cuentas** | Saldos calculados, alta y archivado de cuentas, transferencias entre cuentas |
+| **Categorías** | Árbol ingreso/gasto con uso real, filtros, alta de raíces o subcategorías y presupuestos (fijar, editar, quitar) |
+| **Reportes** | Rango de fechas con atajos, estado de resultados, gráficos, PDF y CSV |
+| **Mi cuenta** | Perfil, cambio de contraseña, meta de ahorro mensual, respaldo exportar/importar, reset y eliminación |
 
-La navegación es por estado (no hay router instalado). Toda la UI usa React Bootstrap; el único CSS propio del demo es `src/dev/componentes/tablaOrdenable.css`, que ajusta el botón del encabezado ordenable. Los resultados de las acciones se informan con toasts; los errores de campo se muestran inline y los fallos de carga con una alerta que permite reintentar.
+El diseño vive en `src/index.css`: variables de color (paleta verde «pino»), tipografía IBM Plex Sans, iconografía Bootstrap Icons, tablas convertidas en listas en móvil, barra inferior de navegación, estilos de impresión y soporte de `prefers-reduced-motion`. `src/App.css` está vacío.
 
 ### Tablas ordenables
 
-- Las tablas de **Movimientos**, **Cuentas**, **Categorías**, **Reportes** y la tarjeta de **reglas recurrentes** ordenan al hacer clic en el título de una columna.
+- **Movimientos**, **Cuentas**, **Categorías** y **Reportes** ordenan al pulsar el título de una columna. En pantallas táctiles/estrechas la tabla se muestra como lista y el orden se elige con el selector **Ordenar** (`SelectorOrden`).
 - Cada columna sigue el ciclo del explorador de archivos: **mayor a menor → menor a mayor → orden original**. El tercer clic devuelve el orden que entrega el servicio (por ejemplo, movimientos de más reciente a más antiguo).
 - Los montos se comparan por **valor absoluto**; texto y fechas usan las reglas del español (`Intl.Collator` con acentos y números) y las fechas ISO se comparan cronológicamente.
 - Los valores vacíos (sin presupuesto, sin próxima fecha) quedan siempre al final, en ambas direcciones, y los empates conservan el orden de llegada.
 - En Categorías se ordenan las raíces y, dentro de cada raíz, sus subcategorías: la jerarquía no se rompe. En Reportes solo se ordenan las filas de cada grupo; los totales quedan fijos.
 - El orden vive en memoria: al cambiar de pantalla se reinicia. Los encabezados exponen `aria-sort` y una descripción para lectores de pantalla.
+- La lógica está en `src/componentes/orden.ts` + `useOrden.ts` + `ThOrdenable.tsx`. La demo conserva su propia copia en `src/dev/componentes/`.
 
 ### Cómo funcionan los movimientos recurrentes
 
 - En el formulario de movimientos, la casilla **“Repetir este movimiento”** convierte el alta en una regla. Se elige frecuencia (cada día, cada semana o cada mes) y, opcionalmente, una fecha final.
 - Si la fecha de inicio es **hoy o anterior**, se registran de inmediato las ocurrencias vencidas (cada una con su fecha real). Si es **futura**, no se crea nada todavía: la tarjeta de reglas muestra la próxima fecha.
-- Al abrir la demo, la app procesa las reglas activas antes de mostrar el dashboard. Si estuvo cerrada varios días, recupera las ocurrencias atrasadas sin duplicarlas.
+- Al abrir la aplicación se procesan las reglas activas antes de mostrar el resumen, para que los saldos ya incluyan lo vencido. Si estuvo cerrada varios días, recupera las ocurrencias atrasadas sin duplicarlas.
 - Las transacciones generadas se marcan con 🔁 y se guardan confirmadas.
 - **Pausar** detiene la generación; **Reanudar** recupera lo vencido durante la pausa. **Eliminar** borra la regla pero conserva los movimientos ya generados.
 - En mensuales, el día se recorta al último del mes sin perder el original: una regla del día 31 genera el 28 de febrero de 2026 y vuelve al 31 en marzo.
@@ -525,6 +655,25 @@ La navegación es por estado (no hay router instalado). Toda la UI usa React Boo
 - **Gastos por categoría:** total, movimientos y porcentaje del gasto.
 - Se generan con texto y tablas nativas de jsPDF (no capturas), con encabezado, pie y numeración.
 - Los montos se escriben como `CRC 1 234,56` porque la fuente estándar de jsPDF no incluye el símbolo `₡`.
+
+---
+
+## 🧪 Demo de referencia (`/demo.html`)
+
+Versión de la interfaz construida **solo con React Bootstrap** (sin el CSS de producto), útil para comparar el diseño y validar el servicio de forma aislada. Usa exactamente el mismo `finanzasService`.
+
+| Pantalla | Contenido |
+| --- | --- |
+| **Acceso** | Login, registro abierto, recuperación con código y pantalla de código único |
+| **Dashboard** | KPIs del mes, patrimonio, flujo mensual, gastos por categoría y últimos movimientos |
+| **Movimientos** | Alta con tipo/monto/fecha/categoría/cuenta/método/estado/etiquetas y casilla **Repetir** (diaria, semanal o mensual, con fin opcional); administración de reglas (pausar, reanudar, eliminar), filtros y eliminación; botón de 8 ejemplos; encabezados ordenables |
+| **Cuentas** | Saldos calculados, alta y archivado de cuentas, transferencias entre cuentas; encabezados ordenables |
+| **Categorías** | Árbol ingreso/gasto con uso real y alta de raíces o subcategorías; encabezados ordenables (raíces y hermanos) |
+| **Reportes** | Rango de fechas con atajos, estado de resultados, gráficos, PDF y CSV; encabezados ordenables dentro de cada grupo |
+| **Análisis** | Detector de gastos hormiga con umbral, KPIs y tabla ordenable; simulador interactivo de compras/metas con recorte de categoría y diagnóstico de viabilidad |
+| **Mi cuenta** | Perfil, cambio de contraseña, respaldo exportar/importar, reset y eliminación |
+
+La navegación es por estado (no hay router instalado). La demo usa React Bootstrap y un único CSS propio, `src/dev/componentes/tablaOrdenable.css`, que ajusta el botón del encabezado ordenable. Los resultados de las acciones se informan con toasts; los errores de campo se muestran inline y los fallos de carga con una alerta que permite reintentar.
 
 ---
 
@@ -569,13 +718,65 @@ Para cambiar el diseño basta con reemplazar el logotipo por otro PNG de 16 x 16
 
 ---
 
+## ☁️ Despliegue en Vercel
+
+La app es **estática**: no necesita variables de entorno, backend ni base de datos remota. Cada usuario guarda sus datos en el IndexedDB de su navegador.
+
+### Desde el panel de Vercel
+
+1. Fusiona la rama de trabajo en `main` (Vercel publica producción desde `main`; las demás ramas generan *previews*).
+2. Entra a [vercel.com](https://vercel.com) con GitHub → **Add New… → Project** → importa `Salware-20/FinTrack`.
+3. Confirma la configuración detectada:
+
+| Campo | Valor |
+| --- | --- |
+| Framework Preset | **Vite** |
+| Root Directory | `./` |
+| Build Command | `npm run build` |
+| Output Directory | `dist` |
+| Install Command | `npm install` (usa el lockfile) |
+| Environment Variables | ninguna |
+
+4. En **Settings → General → Node.js Version** elige **22.x** (Vite 8 exige ≥ 20.19 o ≥ 22.12).
+5. **Deploy**. Al terminar, abre la URL `https://…vercel.app`.
+
+### Desde la CLI
+
+```powershell
+npm install -g vercel
+vercel login
+vercel            # preview
+vercel --prod     # producción
+```
+
+Añade `.vercel` al `.gitignore` si usas la CLI.
+
+### Verificación posterior
+
+- La app abre sin errores en la consola y el registro funciona.
+- DevTools → Application → Service Workers: el SW queda activo con scope `/`.
+- Application → Manifest: “FinTrack” con iconos de 192 y 512 px.
+- Modo **Offline** en DevTools: la app sigue abriendo con el shell precacheado.
+
+### Problemas típicos
+
+| Síntoma | Causa | Solución |
+| --- | --- | --- |
+| Build falla con errores de `crypto` o sintaxis | Node viejo | Settings → Node.js Version → **22.x** → Redeploy |
+| Se ve una versión anterior tras desplegar | Service worker con precache viejo | DevTools → Service Workers → **Unregister** + Clear site data, o abrir en incógnito |
+| Aviso de `install-scripts` (`core-js`) | npm 11 pide aprobar scripts | Informativo; no bloquea el build ni afecta a la app |
+| `npm audit` con moderadas | Dependencias de build (`glob`, `minimatch`) | No entran al bundle ni bloquean el despliegue |
+
+---
+
 ## 👩‍💻 Guía rápida para el frontend
 
-### 1. Arrancar la demo y entrar
+### 1. Arrancar la aplicación y entrar
 
 ```bash
 npm run dev
-# abrir http://localhost:5173/demo.html
+# aplicación: http://localhost:5173/
+# demo:       http://localhost:5173/demo.html
 ```
 
 Registre un usuario; el código de recuperación se muestra una sola vez.
@@ -650,7 +851,7 @@ try {
 }
 ```
 
-En el login no se marcan campos concretos: el toast usa el mismo mensaje para correo inexistente o contraseña incorrecta. Las acciones destructivas conservan `window.confirm`; el toast solo informa el resultado. `ErrorBoundary` evita que un fallo de render deje la sección en blanco.
+En el login no se marcan campos concretos: el toast usa el mismo mensaje para correo inexistente o contraseña incorrecta. En la app real las acciones destructivas usan el diálogo `Confirmar` y los avisos salen de `useAvisos`; la demo conserva `window.confirm` y `useNotificaciones`. `ErrorBoundary` evita que un fallo de render deje la sección en blanco.
 
 ### 5. Formatear valores
 
@@ -661,7 +862,7 @@ formatearMoneda(950000);        // "₡950 000,00"
 formatearFecha('2026-11-15');   // "15 de noviembre de 2026"
 ```
 
-Las pantallas de `src/dev/pantallas` son la referencia completa de consumo del servicio.
+Las pantallas de `src/paginas` son la referencia completa de consumo del servicio; la demo de `src/dev/pantallas` muestra el mismo contrato con otro diseño.
 
 ---
 
@@ -678,14 +879,16 @@ Las pantallas de `src/dev/pantallas` son la referencia completa de consumo del s
 - Operaciones de datos siempre asíncronas.
 - Efectos de React que cargan datos usan promesas con guardas (`activo`) para cumplir `react-hooks/set-state-in-effect`.
 - Gráficos: contenedor con `ratio ratio-16x9` y `maintainAspectRatio: false`.
+- Orden de tablas: comparadores puros en `orden.ts`, estado en `useOrden` y encabezado accesible en `ThOrdenable`.
+- La app y la demo **no comparten CSS**: el producto usa `src/index.css`; la demo solo `tablaOrdenable.css` + Bootstrap.
 
 ### Reparto de archivos
 
 | Zona | Responsable | Regla |
 | --- | --- | --- |
 | `src/models`, `src/services`, `src/db`, `src/utils`, `src/config` | Capa de datos | Cambios coordinados y registrados en la bitácora |
-| `src/App.tsx`, `src/main.tsx`, `App.css`, `index.css` | Frontend | Reservado para el compañero; **no tocar desde la demo** |
-| `src/dev`, `demo.html` | Demostración | Solo desarrollo; no se incluye en el build |
+| `src/App.tsx`, `src/main.tsx`, `src/paginas`, `src/componentes`, `src/index.css` | Interfaz de producto | UI oficial; los cambios visuales se hacen aquí |
+| `src/dev`, `demo.html` | Demostración | Referencia visual; no se incluye en el build |
 
 ---
 
@@ -694,7 +897,7 @@ Las pantallas de `src/dev/pantallas` son la referencia completa de consumo del s
 ```bash
 npm run build   # tsc -b + vite build
 npm run lint    # ESLint
-npm test        # 103 comprobaciones de comportamiento
+npm test        # 213 comprobaciones de comportamiento
 ```
 
 La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModule` y cubre:
@@ -707,6 +910,8 @@ La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModu
 - aislamiento entre dos usuarios (lectura y escritura);
 - respaldo, importación con ids regenerados y reseteo;
 - movimientos recurrentes: ocurrencias vencidas, idempotencia, reglas futuras sin movimientos, pausa/reanudación, fin de mes, respaldo/importación con remapeo y aislamiento entre usuarios;
+- presupuestos: estados normal/advertencia/excedido, consumo con subcategorías, alertas de concentración y respaldo v3;
+- análisis financiero: agrupación de descripciones, umbral inclusivo, proyección anual, porcentajes sin `NaN`, promedio con meses cerrados, mensualización de recurrencias, vigencia de reglas, recorte con subcategorías, ausencia de doble conteo y diagnósticos viable/ajustado/inviable;
 - normalización de errores de validación, sesión, cuota de almacenamiento y fallos técnicos;
 - cambio de contraseña, recuperación con rotación de código y eliminación de cuenta;
 - ordenamiento de tablas: ciclo descendente/ascendente/original, texto con acentos y números, fechas, montos, valores vacíos al final y empates estables.
@@ -720,15 +925,21 @@ Select-String -Path dist/sw.js -Pattern 'demo\.html|src/dev'   # sin coincidenci
 
 La instalación y el modo offline se comprueban con `npm run preview` y DevTools → Application → Manifest y Service Workers.
 
+> `npm audit` reporta vulnerabilidades moderadas en dependencias **de build** (`glob` vía `workbox-build`, `minimatch` vía `typescript-eslint`). No se incluyen en el bundle ni se ejecutan en el navegador; no usar `npm audit fix --force` porque degradaría `vite-plugin-pwa` a una versión incompatible.
+
 ---
 
 ## 🗺️ Pendientes (roadmap)
 
-- [ ] Interfaz de producto en `App.tsx` (a cargo del compañero de frontend).
+- [x] Interfaz de producto responsive en `App.tsx` y `src/paginas`.
 - [x] Manifiesto PWA y service worker para instalación offline.
-- [x] Presupuestos por categoría y alertas.
-- [ ] Edición de movimientos desde la UI (el servicio ya la soporta).
-- [ ] Edición de monto, categoría y frecuencia de reglas recurrentes desde la UI.
+- [x] Presupuestos por categoría y alertas de concentración.
+- [x] Meta de ahorro mensual con progreso.
+- [x] Tablas ordenables por encabezado y selector móvil.
+- [x] Detector de gastos hormiga y simulador de escenarios en la demo.
+- [x] Edición de movimientos desde la UI.
+- [ ] Edición de monto, categoría, frecuencia y fecha final de reglas recurrentes desde la UI.
+- [ ] Despliegue público en Vercel (guía lista en este README).
 - [ ] Cifrado de la base local con frase de paso (opcional).
 - [ ] Sincronización opcional con Supabase y RLS, si el cliente la pide más adelante.
 - [ ] Exportación de reportes en otros formatos.
@@ -757,3 +968,6 @@ La instalación y el modo offline se comprueban con `npm run preview` y DevTools
 | 2026-11-17 | **Iconos generados desde el logotipo en pixel art.** `scripts/generar-iconos.mjs` lee `src/assets/Logotipo.png` (16 x 16 RGBA) con un decodificador PNG propio basado en `node:zlib` (chunks IDAT, filtros None/Sub/Up/Average/Paeth, sin dependencias externas) y genera `public/favicon.svg` (un `<rect>` por píxel no transparente, `shape-rendering="crispEdges"`) y los PNG `pwa-192x192.png` y `pwa-512x512.png` con escalado Nearest Neighbor exacto de 12x y 32x. El build de la PWA precachea los tres archivos y el manifiesto los referencia. | `scripts/generar-iconos.mjs`, `public/favicon.svg`, `public/pwa-192x192.png`, `public/pwa-512x512.png`, `README.md` |
 | 2026-11-17 | **Reparación de codificación (mojibake).** Diez archivos heredados del commit `1d71ae4` tenían texto UTF-8 re-interpretado como Windows-1252 (acentos y emojis convertidos en secuencias extrañas) y BOM añadidos por la misma corrupción. Se restauraron los caracteres originales tramo por tramo, conservando los fragmentos que ya estaban correctos, y se eliminaron los BOM y los caracteres de control `U+008D`/`U+008F`. Resultado: 0 marcas de mojibake y UTF-8 sin BOM en todo el proyecto; build, lint y 91 pruebas en verde. | `scripts/smoke.mjs`, `src/config/app.ts`, `src/db/baseDatos.ts`, `src/db/semilla.ts`, `src/dev/pantallas/*`, `src/models/tipos.ts`, `src/services/FinanzasService.ts`, `src/services/LocalFinanzasService.ts`, `README.md` |
 | 2026-11-17 | **Tablas ordenables en la demo.** Módulo puro `ordenTabla.ts` (comparadores de texto con `Intl.Collator` en español, número, fecha y booleano), hook `useOrdenTabla` y encabezado accesible `ThOrdenable` con `aria-sort`. Cada columna cicla mayor a menor → menor a mayor → orden original; los montos se ordenan por valor absoluto y los vacíos quedan al final. Se aplica a Movimientos, Cuentas, reglas recurrentes, Categorías (raíces y hermanos, jerarquía intacta) y Reportes (solo filas internas de cada grupo); el Dashboard no cambia. El orden es en memoria y se reinicia al navegar. Sin dependencias nuevas y todo dentro de `src/dev`. La prueba de humo sube de 91 a 103 comprobaciones. | `src/dev/componentes/ordenTabla.ts`, `useOrdenTabla.ts`, `ThOrdenable.tsx`, `tablaOrdenable.css`, `TablaRecurrencias.tsx`, `src/dev/pantallas/{Movimientos,Cuentas,Categorias,Reportes}.tsx`, `scripts/smoke.mjs`, `README.md` |
+| 2026-11-18 | **Interfaz de producto integrada** (commits `4cafca2`, `8056822`, `ed0a969`). La app real sale del placeholder: `App.tsx` orquesta sesión, navegación por estado y procesamiento de recurrencias; `src/paginas/*` implementa acceso, resumen, movimientos (alta, edición, filtros, repetición), cuentas, categorías, reportes y mi cuenta. Se añade un sistema de diseño propio en `src/index.css` (tokens de color, IBM Plex Sans, Bootstrap Icons, layout responsive con barra inferior móvil, estilos de impresión y `prefers-reduced-motion`). Se incorporan la gestión de presupuestos y la meta de ahorro, las tablas ordenables del producto (`orden.ts`, `useOrden`, `ThOrdenable`, `SelectorOrden` para móvil) y la edición de movimientos. La demo de `src/dev` se conserva íntegra como referencia y sigue fuera del build. Build, lint y 103 pruebas en verde. | `src/App.tsx`, `src/main.tsx`, `src/componentes/*`, `src/paginas/*`, `src/index.css`, `package.json`, `package-lock.json` |
+| 2026-11-18 | **README actualizado al estado real del proyecto.** Se corrigen el estado y el alcance (interfaz de producto lista, esquema Dexie v3, presupuestos y meta de ahorro), se documenta la entidad `Presupuesto` con sus reglas de negocio y contrato, la tabla `presupuestos` y los respaldos v3 (compatibles v1/v2), el sistema de diseño y las tablas ordenables del producto, la diferencia entre app real y demo de referencia, el despliegue en Vercel y el estado real de la verificación (103 comprobaciones, auditoría de dependencias de build). | `README.md` |
+| 2026-11-20 | **Análisis financiero en la demo.** Nuevo módulo puro `analisisFinanciero.ts` con el detector de gastos hormiga (agrupación por descripción normalizada, umbral inclusivo configurable, proyección anual lineal y porcentajes protegidos contra división por cero) y el simulador de escenarios (hasta 3 meses cerrados, recurrencias activas mensualizadas sin doble conteo, recorte por categoría con subcategorías y diagnóstico viable/ajustado/inviable). Se añaden las interfaces y constantes en `tipos.ts`, los métodos `analizarGastosHormiga` y `simularEscenario` al contrato y al servicio local, la pantalla `Analisis.tsx` con dos tarjetas, su registro en la navegación de la demo y 58 pruebas nuevas (213 en total). Sin dependencias nuevas, sin cambios en `App.tsx`, `main.tsx`, CSS ni en el esquema Dexie. Build, lint y pruebas en verde. | `src/utils/analisisFinanciero.ts`, `src/models/tipos.ts`, `src/services/*`, `src/dev/pantallas/Analisis.tsx`, `src/dev/secciones.ts`, `src/dev/DemoDatos.tsx`, `scripts/smoke.mjs`, `README.md` |

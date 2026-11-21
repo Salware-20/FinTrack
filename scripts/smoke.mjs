@@ -35,6 +35,23 @@ const {
   compararNumero,
   compararFecha,
 } = await servidor.ssrLoadModule('/src/dev/componentes/ordenTabla.ts');
+const {
+  detectarSeparador,
+  parsearCsv,
+  normalizarFechaCruda,
+  normalizarMontoCrudo,
+} = await servidor.ssrLoadModule('/src/utils/importadorCsv.ts');
+const {
+  detectarGastosHormiga,
+  normalizarDescripcionComercio,
+  claveComercio,
+  calcularSimulacion,
+  mensualizarMontoRecurrente,
+  sumarMeses,
+} = await servidor.ssrLoadModule('/src/utils/analisisFinanciero.ts');
+const { UMBRAL_GASTOS_HORMIGA } = await servidor.ssrLoadModule(
+  '/src/models/tipos.ts',
+);
 
 let pruebas = 0;
 function afirmar(condicion, mensaje) {
@@ -529,6 +546,311 @@ try {
   await servicio.eliminarPresupuesto(presupuestoAlim.id);
   afirmar((await servicio.listarPresupuestos()).length === 0, 'elimina presupuesto correctamente');
 
+  console.log('\nImportador CSV');
+  afirmar(detectarSeparador(['a,b,c', '1,2,3']) === ',', 'detecta el separador coma');
+  afirmar(detectarSeparador(['a;b;c', '1;2;3']) === ';', 'detecta el separador punto y coma');
+  afirmar(
+    detectarSeparador(['"Perez, Ana";monto', 'x;y']) === ';',
+    'ignora las comas dentro de comillas al detectar el separador',
+  );
+
+  const filasComillas = parsearCsv(
+    'Descripción,Monto\n"PAGO, SUPER ""EL REY""",25000',
+    ',',
+  );
+  afirmar(filasComillas.length === 2, 'el tokenizador produce dos filas');
+  afirmar(
+    filasComillas[1][0] === 'PAGO, SUPER "EL REY"',
+    'respeta comillas, comas internas y comillas escapadas',
+  );
+
+  const filasBom = parsearCsv(
+    '\uFEFFFecha;Monto\r\n2026-03-15;1000\r\n',
+    ';',
+  );
+  afirmar(
+    filasBom[0][0] === 'Fecha' && filasBom[1][0] === '2026-03-15',
+    'quita el BOM y normaliza los saltos CRLF',
+  );
+
+  afirmar(normalizarFechaCruda('15/03/2026') === '2026-03-15', 'fecha DD/MM/YYYY');
+  afirmar(normalizarFechaCruda('2026-03-15') === '2026-03-15', 'fecha AAAA-MM-DD');
+  afirmar(normalizarFechaCruda('5/3/26') === '2026-03-05', 'fecha con año de dos dígitos');
+  afirmar(
+    normalizarFechaCruda('15/03/2026 00:00:00') === '2026-03-15',
+    'fecha con sufijo de hora',
+  );
+  afirmar(normalizarFechaCruda('31/02/2026') === null, 'rechaza fechas inexistentes');
+  afirmar(normalizarFechaCruda('hoy') === null, 'rechaza texto que no es fecha');
+
+  afirmar(normalizarMontoCrudo('₡1.234,56') === 1234.56, 'monto con colones y miles');
+  afirmar(normalizarMontoCrudo('1,234.56') === 1234.56, 'monto con formato estadounidense');
+  afirmar(normalizarMontoCrudo('(12.500,00)') === -12500, 'monto negativo entre paréntesis');
+  afirmar(normalizarMontoCrudo('1.234') === 1234, 'monto con separador de miles');
+  afirmar(normalizarMontoCrudo('-45.000') === -45000, 'monto negativo con guion');
+  afirmar(normalizarMontoCrudo('1234,5') === 1234.5, 'monto con decimales');
+  afirmar(normalizarMontoCrudo('abc') === null, 'rechaza montos no numéricos');
+
+  const cuentaCsv = await servicio.crearCuenta({
+    nombre: 'Banco CSV',
+    tipo: 'banco',
+    saldoInicial: 0,
+  });
+  const categoriasCsv = await servicio.listarCategorias();
+  const catId = (nombre) => categoriasCsv.find((c) => c.nombre === nombre).id;
+
+  const csvDebCred = [
+    'Fecha;Descripción;Débito;Crédito',
+    '15/03/2024;AUTOMERCADO ESCAZU;25000,50;',
+    '16/03/2024;SALARIO PLANILLA;;850000,00',
+    '17/03/2024;GASOLINERA UNO;30000;',
+  ].join('\n');
+
+  const detectadas = await servicio.previsualizarCsv(csvDebCred, cuentaCsv.id);
+  afirmar(detectadas.length === 3, 'detecta los tres movimientos del archivo');
+  afirmar(
+    detectadas[0].tipo === 'gasto' && detectadas[0].monto === 25000.5,
+    'lee la columna Débito como gasto',
+  );
+  afirmar(
+    detectadas[0].categoriaIdSugerida === catId('Supermercado'),
+    'categoriza el supermercado con la categoría real',
+  );
+  afirmar(
+    detectadas[1].tipo === 'ingreso' && detectadas[1].monto === 850000,
+    'lee la columna Crédito como ingreso',
+  );
+  afirmar(
+    detectadas[1].categoriaIdSugerida === catId('Salario'),
+    'categoriza el salario como ingreso',
+  );
+  afirmar(
+    detectadas[2].categoriaIdSugerida === catId('Gasolina'),
+    'categoriza la gasolinera',
+  );
+  afirmar(
+    (await servicio.listarTransacciones({ cuentaId: cuentaCsv.id })).length === 0,
+    'la previsualización no guarda nada',
+  );
+
+  const csvMetadatos = [
+    'Banco de Costa Rica',
+    'Cuenta: CR05015201001024879666',
+    'Saldo disponible: 1.000.000,00',
+    'Fecha;Descripción;Monto',
+    '01/04/2024;UBER TRIP;-12500,00',
+    '02/04/2024;AYA ACUEDUCTO;-8900',
+    ';;TOTAL;',
+  ].join('\n');
+  const conMetadatos = await servicio.previsualizarCsv(
+    csvMetadatos,
+    cuentaCsv.id,
+  );
+  afirmar(conMetadatos.length === 2, 'ignora metadatos previos y filas de totales');
+  afirmar(
+    conMetadatos[0].categoriaIdSugerida === catId('Didi / Uber'),
+    'categoriza Uber/Didi',
+  );
+  afirmar(
+    conMetadatos[1].categoriaIdSugerida === catId('Agua'),
+    'categoriza el recibo de AyA',
+  );
+
+  await servicio.crearTransaccion({
+    monto: 25_000,
+    tipo: 'gasto',
+    fecha: '2024-05-02',
+    descripcion: 'Supermercado del barrio',
+    categoriaId: catId('Supermercado'),
+    cuentaId: cuentaCsv.id,
+  });
+  const csvDuplicados = [
+    'Fecha;Descripción;Débito;Crédito',
+    '02/05/2024;SUPERMERCADO DEL BARRIO;25000;',
+    '02/05/2024;SUPERMERCADO DEL BARRIO;25000;',
+    '03/05/2024;TIENDA LA ESQUINA;25000;',
+  ].join('\n');
+  const conDuplicados = await servicio.previsualizarCsv(
+    csvDuplicados,
+    cuentaCsv.id,
+  );
+  afirmar(
+    conDuplicados[0].posibleDuplicado === true,
+    'marca un movimiento que ya existe en la cuenta',
+  );
+  afirmar(
+    conDuplicados[1].posibleDuplicado === true,
+    'marca la fila repetida dentro del mismo archivo',
+  );
+  afirmar(
+    conDuplicados[2].posibleDuplicado === false,
+    'no marca un movimiento distinto del mismo día',
+  );
+
+  const otraCuenta = await servicio.crearCuenta({
+    nombre: 'Ahorro CSV',
+    tipo: 'ahorro',
+    saldoInicial: 0,
+  });
+  const enOtraCuenta = await servicio.previsualizarCsv(
+    csvDuplicados,
+    otraCuenta.id,
+  );
+  afirmar(
+    enOtraCuenta[0].posibleDuplicado === false,
+    'no marca duplicados de movimientos de otra cuenta',
+  );
+
+  const csvCortas = [
+    'Fecha;Descripción;Monto',
+    '01/06/2024;MAXIMILIANO SERVICIOS;-1000',
+    '02/06/2024;GASOLINERA UNO;-20000',
+    '03/06/2024;BAR LA ESQUINA;-5000',
+    '04/06/2024;AYA ACUEDUCTO;-3000',
+    '05/06/2024;ICE ELECTRICIDAD;-15000',
+  ].join('\n');
+  const cortas = await servicio.previsualizarCsv(csvCortas, cuentaCsv.id);
+  afirmar(
+    cortas[0].categoriaIdSugerida === catId('Otros gastos'),
+    'no confunde "maximiliano" con la clave corta "max"',
+  );
+  afirmar(
+    cortas[1].categoriaIdSugerida === catId('Gasolina'),
+    'la clave corta "uno" coincide como token completo',
+  );
+  afirmar(
+    cortas[2].categoriaIdSugerida === catId('Restaurante'),
+    'la clave corta "bar" coincide como token completo',
+  );
+  afirmar(
+    cortas[3].categoriaIdSugerida === catId('Agua'),
+    'la clave corta "aya" coincide como token completo',
+  );
+  afirmar(
+    cortas[4].categoriaIdSugerida === catId('Luz'),
+    'la clave corta "ice" coincide como token completo',
+  );
+
+  const antesAtomicidad = (
+    await servicio.listarTransacciones({ cuentaId: cuentaCsv.id })
+  ).length;
+  const catIngresoCsv = categoriasCsv.find((c) => c.tipo === 'ingreso');
+  const filasAtomicas = [
+    {
+      id: 'csv-1',
+      fecha: '2024-07-01',
+      descripcion: 'Fila válida',
+      monto: 1000,
+      tipo: 'gasto',
+      categoriaIdSugerida: catId('Supermercado'),
+      metodoPagoSugerido: 'efectivo',
+      posibleDuplicado: false,
+      numeroFila: 1,
+    },
+    {
+      id: 'csv-2',
+      fecha: '2024-07-02',
+      descripcion: 'Fila con categoría cruzada',
+      monto: 2000,
+      tipo: 'gasto',
+      categoriaIdSugerida: catIngresoCsv.id,
+      metodoPagoSugerido: 'efectivo',
+      posibleDuplicado: false,
+      numeroFila: 2,
+    },
+  ];
+  await esperarError(
+    () => servicio.confirmarImportacionCsv(cuentaCsv.id, filasAtomicas),
+    'rechaza una fila con categoría de tipo distinto',
+  );
+  afirmar(
+    (await servicio.listarTransacciones({ cuentaId: cuentaCsv.id })).length ===
+      antesAtomicidad,
+    'la importación fallida no guarda ninguna fila (atómica)',
+  );
+  await esperarError(
+    () => servicio.confirmarImportacionCsv(cuentaCsv.id, []),
+    'rechaza una importación vacía',
+  );
+
+  await servicio.actualizarCuenta(cuentaCsv.id, { activa: false });
+  afirmar(
+    (await servicio.previsualizarCsv(csvDebCred, cuentaCsv.id)).length === 3,
+    'permite previsualizar en una cuenta archivada',
+  );
+  await esperarError(
+    () => servicio.confirmarImportacionCsv(cuentaCsv.id, detectadas),
+    'rechaza importar en una cuenta archivada',
+  );
+  await servicio.actualizarCuenta(cuentaCsv.id, { activa: true });
+
+  await servicio.registrar({
+    nombre: 'Carla Vega',
+    correo: 'carla@example.com',
+    contrasena: 'claveCarla123',
+  });
+  const cuentaCarla = (await servicio.listarCuentas())[0];
+  await servicio.cerrarSesion();
+  await servicio.iniciarSesion('beto@example.com', 'otraClave456');
+  await esperarError(
+    () => servicio.previsualizarCsv(csvDebCred, cuentaCarla.id),
+    'no permite previsualizar la cuenta de otro usuario',
+  );
+  await esperarError(
+    () => servicio.confirmarImportacionCsv(cuentaCarla.id, detectadas),
+    'no permite importar en la cuenta de otro usuario',
+  );
+
+  const importados = await servicio.confirmarImportacionCsv(
+    cuentaCsv.id,
+    detectadas,
+  );
+  afirmar(importados === 3, 'importa los movimientos confirmados');
+  const trxCuentaCsv = await servicio.listarTransacciones({
+    cuentaId: cuentaCsv.id,
+  });
+  afirmar(
+    trxCuentaCsv.length === antesAtomicidad + 3,
+    'guarda exactamente las filas confirmadas',
+  );
+  afirmar(
+    trxCuentaCsv.some(
+      (transaccion) =>
+        transaccion.fecha === '2024-03-16' &&
+        transaccion.tipo === 'ingreso' &&
+        transaccion.monto === 850_000,
+    ),
+    'guarda el ingreso con su fecha y monto normalizados',
+  );
+  afirmar(
+    trxCuentaCsv.every((transaccion) => transaccion.cuentaId === cuentaCsv.id),
+    'todos los movimientos quedan en la cuenta indicada',
+  );
+  afirmar(
+    trxCuentaCsv.filter((transaccion) =>
+      transaccion.etiquetas.includes('importado'),
+    ).length === 3,
+    'marca los movimientos importados con su etiqueta',
+  );
+  const saldoCsv = (await servicio.obtenerSaldos()).find(
+    (item) => item.cuentaId === cuentaCsv.id,
+  );
+  afirmar(
+    saldoCsv.saldo === 769_999.5,
+    'el saldo de la cuenta refleja el neto importado',
+  );
+
+  const csvExportado = await servicio.exportarTransaccionesCsv();
+  const totalTransacciones = (await servicio.listarTransacciones()).length;
+  const reimportadas = await servicio.previsualizarCsv(
+    csvExportado,
+    cuentaCsv.id,
+  );
+  afirmar(
+    reimportadas.length === totalTransacciones,
+    'reconoce el CSV exportado por la propia aplicación',
+  );
+
   // Ordenamiento de tablas de la demo
   const filasNumero = [10, 2, 33].map((valor) => ({ valor }));
   const porNumero = { valor: compararNumero((fila) => fila.valor) };
@@ -636,6 +958,577 @@ try {
       .map((fila) => fila.posicion)
       .join(',') === '2,1,3',
     'mantiene el orden original en los empates',
+  );
+
+  // Análisis financiero local
+  console.log('\nAnálisis financiero: detector de gastos hormiga');
+  afirmar(
+    UMBRAL_GASTOS_HORMIGA === 10_000,
+    'el umbral por defecto es ₡10 000',
+  );
+  afirmar(
+    normalizarDescripcionComercio('  CAFETERÍA  Ñandú!! ') ===
+      'cafeteria nandu',
+    'normaliza mayúsculas, tildes, eñes y puntuación',
+  );
+  afirmar(
+    claveComercio('COMPRA POS CAFETERÍA ÑANDÚ 123') === 'cafeteria nandu',
+    'descarta ruido bancario y tokens numéricos para agrupar comercios',
+  );
+
+  const gastosHormigaUnitarios = [
+    {
+      monto: 4_000,
+      fecha: '2026-11-02',
+      descripcion: 'CAFETERÍA ÑANDÚ',
+      categoriaId: 'cafe',
+      categoriaNombre: 'Alimentación › Cafetería',
+    },
+    {
+      monto: 4_000,
+      fecha: '2026-11-05',
+      descripcion: 'Cafeteria Nandu',
+      categoriaId: 'cafe',
+      categoriaNombre: 'Alimentación › Cafetería',
+    },
+    {
+      monto: 4_000,
+      fecha: '2026-11-09',
+      descripcion: 'COMPRA POS CAFETERIA NANDU 123',
+      categoriaId: 'cafe',
+      categoriaNombre: 'Alimentación › Cafetería',
+    },
+    {
+      monto: 9_000,
+      fecha: '2026-11-10',
+      descripcion: 'Farmacia',
+      categoriaId: 'farmacia',
+      categoriaNombre: 'Salud › Farmacia',
+    },
+    {
+      monto: 25_000,
+      fecha: '2026-11-11',
+      descripcion: 'Supermercado',
+      categoriaId: 'super',
+      categoriaNombre: 'Alimentación › Supermercado',
+    },
+    {
+      monto: 3_500,
+      fecha: '2026-10-01',
+      descripcion: 'Cafetería Ñandú',
+      categoriaId: 'cafe',
+      categoriaNombre: 'Alimentación › Cafetería',
+    },
+  ];
+
+  const analisisUnitario = detectarGastosHormiga(gastosHormigaUnitarios, {
+    periodo: '2026-11',
+    umbralMonto: 10_000,
+  });
+  afirmar(
+    analisisUnitario.totalMensual === 21_000 &&
+      analisisUnitario.proyeccionAnual === 252_000,
+    'suma los gastos bajo el umbral y proyecta el año (×12)',
+  );
+  afirmar(
+    analisisUnitario.totalGastosPeriodo === 46_000 &&
+      analisisUnitario.porcentajeDelGastoTotal === 45.65,
+    'compara la fuga con el gasto total del periodo',
+  );
+  afirmar(
+    analisisUnitario.fugas.length === 2 &&
+      analisisUnitario.fugas[0].clave === 'cafeteria nandu' &&
+      analisisUnitario.fugas[0].cantidad === 3 &&
+      analisisUnitario.fugas[0].totalPeriodo === 12_000 &&
+      analisisUnitario.fugas[0].proyeccionAnual === 144_000,
+    'agrupa las descripciones similares y las ordena por frecuencia',
+  );
+  afirmar(
+    analisisUnitario.cantidadFugasFrecuentes === 1 &&
+      analisisUnitario.fugas[0].esFrecuente === true,
+    'identifica las fugas con dos o más movimientos',
+  );
+  afirmar(
+    analisisUnitario.fugas[0].porcentajeSobreFugas === 57.14,
+    'calcula el porcentaje de cada fuga sobre el total de fugas',
+  );
+
+  const analisisCincoMil = detectarGastosHormiga(gastosHormigaUnitarios, {
+    periodo: '2026-11',
+    umbralMonto: 5_000,
+  });
+  afirmar(
+    analisisCincoMil.totalMensual === 12_000 &&
+      analisisCincoMil.fugas.length === 1,
+    'con umbral de ₡5 000 solo conserva la cafetería',
+  );
+  const analisisQuinceMil = detectarGastosHormiga(gastosHormigaUnitarios, {
+    periodo: '2026-11',
+    umbralMonto: 15_000,
+  });
+  afirmar(
+    analisisQuinceMil.totalMensual === 21_000 &&
+      analisisQuinceMil.fugas.length === 2,
+    'con umbral de ₡15 000 mantiene los dos comercios',
+  );
+  const analisisVeinticincoMil = detectarGastosHormiga(gastosHormigaUnitarios, {
+    periodo: '2026-11',
+    umbralMonto: 25_000,
+  });
+  afirmar(
+    analisisVeinticincoMil.totalMensual === 46_000 &&
+      analisisVeinticincoMil.fugas.length === 3,
+    'el umbral incluye los montos exactamente iguales',
+  );
+
+  const analisisVacio = detectarGastosHormiga([], { periodo: '2026-11' });
+  afirmar(
+    analisisVacio.totalMensual === 0 &&
+      analisisVacio.fugas.length === 0 &&
+      analisisVacio.proyeccionAnual === 0 &&
+      analisisVacio.porcentajeDelGastoTotal === 0,
+    'sin gastos devuelve ceros sin NaN',
+  );
+  afirmar(
+    !Number.isNaN(analisisVacio.porcentajeDelGastoTotal),
+    'el porcentaje del gasto total nunca es NaN',
+  );
+
+  console.log('\nAnálisis financiero: simulador (funciones puras)');
+  const contextoBase = {
+    periodoReferencia: '2026-11',
+    mesesAnalizados: ['2026-09', '2026-10', '2026-11'],
+    ingresosPromedio: 600_000,
+    gastosPromedio: 450_000,
+    flujoLibrePromedio: 150_000,
+    ingresosBase: 600_000,
+    gastosBase: 450_000,
+    flujoLibreActual: 150_000,
+    gastoCategoriaPromedio: 40_000,
+    categoriaRecorteNombre: 'Cafetería',
+    metaAhorroMensual: 50_000,
+    ingresoRecurrenteMensual: 0,
+    compromisoRecurrenteMensual: 0,
+    recurrenciasActivas: [],
+  };
+
+  const escenarioViable = calcularSimulacion(contextoBase, {
+    montoObjetivo: 600_000,
+    meses: 6,
+  });
+  afirmar(
+    escenarioViable.cuotaMensual === 100_000 &&
+      escenarioViable.disponibleParaCuota === 100_000 &&
+      escenarioViable.diferenciaMensual === 0,
+    'reparte el objetivo en cuotas y descuenta la meta de ahorro',
+  );
+  afirmar(
+    escenarioViable.viable === true &&
+      escenarioViable.diagnostico === 'success',
+    'marca como viable el escenario que conserva la meta',
+  );
+  afirmar(
+    escenarioViable.mesesParaObjetivo === 4 &&
+      escenarioViable.fechaEstimada === '2027-03',
+    'estima los meses reales para juntar el monto y su fecha',
+  );
+
+  const escenarioAjustado = calcularSimulacion(contextoBase, {
+    montoObjetivo: 120_000,
+    meses: 1,
+  });
+  afirmar(
+    escenarioAjustado.alcanzaCuota === true &&
+      escenarioAjustado.viable === false &&
+      escenarioAjustado.diagnostico === 'warning' &&
+      escenarioAjustado.diferenciaMensual === -20_000,
+    'avisa cuando la cuota cabe pero sacrifica la meta',
+  );
+
+  const escenarioInviable = calcularSimulacion(contextoBase, {
+    montoObjetivo: 200_000,
+    meses: 1,
+  });
+  afirmar(
+    escenarioInviable.alcanzaCuota === false &&
+      escenarioInviable.diagnostico === 'danger',
+    'marca como inviable la cuota que supera el flujo',
+  );
+
+  const escenarioConRecorte = calcularSimulacion(contextoBase, {
+    montoObjetivo: 160_000,
+    meses: 1,
+    categoriaRecorteId: 'cat-cafe',
+    porcentajeRecorte: 50,
+  });
+  afirmar(
+    escenarioConRecorte.ahorroMensualRecorte === 20_000 &&
+      escenarioConRecorte.ahorroAnualRecorte === 240_000 &&
+      escenarioConRecorte.flujoLibreProyectado === 170_000,
+    'el recorte libera flujo mensual y se anualiza para comparar',
+  );
+  afirmar(
+    escenarioConRecorte.diagnostico === 'warning',
+    'el recorte mejora el diagnóstico de inviable a ajustado',
+  );
+  afirmar(
+    calcularSimulacion(contextoBase, {
+      montoObjetivo: 160_000,
+      meses: 1,
+    }).diagnostico === 'danger',
+    'sin el recorte el mismo escenario es inviable',
+  );
+
+  const escenarioSinFlujo = calcularSimulacion(
+    {
+      ...contextoBase,
+      ingresosBase: 100_000,
+      gastosBase: 200_000,
+      flujoLibreActual: -100_000,
+      metaAhorroMensual: 0,
+    },
+    { montoObjetivo: 50_000, meses: 1 },
+  );
+  afirmar(
+    escenarioSinFlujo.mesesParaObjetivo === null &&
+      escenarioSinFlujo.fechaEstimada === null,
+    'sin flujo positivo no promete una fecha de ahorro',
+  );
+
+  afirmar(
+    mensualizarMontoRecurrente('mensual', 10_000) === 10_000,
+    'mensualiza una regla mensual sin cambios',
+  );
+  afirmar(
+    mensualizarMontoRecurrente('semanal', 10_000) === 43_333.33,
+    'mensualiza una regla semanal (×52/12)',
+  );
+  afirmar(
+    mensualizarMontoRecurrente('diaria', 10_000) === 304_166.67,
+    'mensualiza una regla diaria (×365/12)',
+  );
+  afirmar(
+    sumarMeses('2026-11', 4) === '2027-03' &&
+      sumarMeses('2026-12', 1) === '2027-01' &&
+      sumarMeses('2026-01', 12) === '2027-01',
+    'suma meses cruzando el año correctamente',
+  );
+
+  console.log('\nAnálisis financiero: servicio');
+  const fechaLocalAnalisis = (fecha) => {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+  };
+  const mesRelativo = (desplazamiento) => {
+    const ahora = new Date();
+    return fechaLocalAnalisis(
+      new Date(ahora.getFullYear(), ahora.getMonth() + desplazamiento, 1),
+    ).slice(0, 7);
+  };
+  const fechaDeMes = (desplazamiento, dia = 1) =>
+    `${mesRelativo(desplazamiento)}-${String(dia).padStart(2, '0')}`;
+
+  await servicio.registrar({
+    nombre: 'Dora Análisis',
+    correo: 'dora@example.com',
+    contrasena: 'analisis123',
+  });
+  await servicio.actualizarConfiguracion({ metaAhorroMensual: 50_000 });
+
+  const cuentaD = (await servicio.listarCuentas())[0];
+  const categoriasD = await servicio.listarCategorias();
+  const catD = (nombre) =>
+    categoriasD.find((categoria) => categoria.nombre === nombre);
+  const catSuperD = catD('Supermercado');
+  const catCafeD = catD('Cafetería');
+  const catFarmaciaD = catD('Farmacia');
+  const catAlimentacionD = catD('Alimentación');
+  const catSalarioD = catD('Salario');
+  const catTransporteD = catD('Transporte');
+  const catStreamingD = catD('Streaming');
+
+  const movimientosD = [
+    { mes: -3, tipo: 'ingreso', monto: 600_000, descripcion: 'Salario', categoriaId: catSalarioD.id },
+    { mes: -3, tipo: 'gasto', monto: 40_000, descripcion: 'Supermercado', categoriaId: catSuperD.id },
+    { mes: -2, tipo: 'ingreso', monto: 600_000, descripcion: 'Salario', categoriaId: catSalarioD.id },
+    { mes: -2, tipo: 'gasto', monto: 50_000, descripcion: 'Supermercado', categoriaId: catSuperD.id },
+    { mes: -1, tipo: 'ingreso', monto: 600_000, descripcion: 'Salario', categoriaId: catSalarioD.id },
+    { mes: -1, tipo: 'gasto', monto: 25_000, descripcion: 'Supermercado', categoriaId: catSuperD.id },
+    { mes: -1, tipo: 'gasto', monto: 4_000, descripcion: 'CAFETERÍA ÑANDÚ', categoriaId: catCafeD.id },
+    { mes: -1, tipo: 'gasto', monto: 4_000, descripcion: 'Cafeteria Nandu', categoriaId: catCafeD.id },
+    { mes: -1, tipo: 'gasto', monto: 4_000, descripcion: 'COMPRA POS CAFETERIA NANDU 123', categoriaId: catCafeD.id },
+    { mes: -1, tipo: 'gasto', monto: 9_000, descripcion: 'Farmacia', categoriaId: catFarmaciaD.id },
+    { mes: 0, tipo: 'ingreso', monto: 100_000, descripcion: 'Salario', categoriaId: catSalarioD.id },
+    { mes: 0, tipo: 'gasto', monto: 25_000, descripcion: 'Supermercado', categoriaId: catSuperD.id },
+    { mes: 0, tipo: 'gasto', monto: 4_000, descripcion: 'CAFETERÍA ÑANDÚ', categoriaId: catCafeD.id },
+    { mes: 0, tipo: 'gasto', monto: 4_000, descripcion: 'Cafeteria Nandu', categoriaId: catCafeD.id },
+    { mes: 0, tipo: 'gasto', monto: 4_000, descripcion: 'COMPRA POS CAFETERIA NANDU 123', categoriaId: catCafeD.id },
+    { mes: 0, tipo: 'gasto', monto: 9_000, descripcion: 'Farmacia', categoriaId: catFarmaciaD.id },
+    { mes: 0, tipo: 'gasto', monto: 3_000, descripcion: 'Cafetería pendiente', categoriaId: catCafeD.id, estado: 'pendiente' },
+  ];
+
+  for (const movimiento of movimientosD) {
+    await servicio.crearTransaccion({
+      monto: movimiento.monto,
+      tipo: movimiento.tipo,
+      fecha: fechaDeMes(movimiento.mes),
+      descripcion: movimiento.descripcion,
+      categoriaId: movimiento.categoriaId,
+      cuentaId: cuentaD.id,
+      estado: movimiento.estado,
+    });
+  }
+
+  const analisisServicio = await servicio.analizarGastosHormiga(
+    mesRelativo(0),
+    10_000,
+  );
+  afirmar(
+    analisisServicio.totalMensual === 21_000 &&
+      analisisServicio.proyeccionAnual === 252_000 &&
+      analisisServicio.totalGastosPeriodo === 46_000,
+    'el servicio analiza solo los gastos confirmados del mes',
+  );
+  afirmar(
+    analisisServicio.fugas[0].clave === 'cafeteria nandu' &&
+      analisisServicio.fugas[0].cantidad === 3 &&
+      analisisServicio.fugas[0].proyeccionAnual === 144_000 &&
+      analisisServicio.cantidadFugasFrecuentes === 1,
+    'devuelve el ranking de fugas frecuentes del servicio',
+  );
+  afirmar(
+    (await servicio.analizarGastosHormiga(mesRelativo(0), 5_000))
+      .totalMensual === 12_000,
+    'el servicio respeta un umbral personalizado',
+  );
+  afirmar(
+    (await servicio.analizarGastosHormiga(mesRelativo(0))).umbralMonto ===
+      10_000,
+    'el servicio aplica el umbral por defecto',
+  );
+  await esperarError(
+    () => servicio.analizarGastosHormiga('2026-13'),
+    'rechaza un periodo con mes inexistente',
+  );
+  await esperarError(
+    () => servicio.analizarGastosHormiga(mesRelativo(0), -1),
+    'rechaza un umbral negativo',
+  );
+
+  const simulacionBase = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+  });
+  afirmar(
+    simulacionBase.mesesAnalizados.length === 3 &&
+      simulacionBase.mesesAnalizados[0] === mesRelativo(-3) &&
+      simulacionBase.mesesAnalizados[2] === mesRelativo(-1),
+    'prioriza los meses cerrados y excluye el mes actual incompleto',
+  );
+  afirmar(
+    simulacionBase.ingresosPromedio === 600_000 &&
+      Math.abs(simulacionBase.gastosPromedio - 45_333.33) < 0.01 &&
+      Math.abs(simulacionBase.flujoLibrePromedio - 554_666.67) < 0.01,
+    'calcula promedios reales sobre los meses analizados',
+  );
+  afirmar(
+    Math.abs(simulacionBase.gastosBase - 45_333.33) < 0.01 &&
+      simulacionBase.viable === true &&
+      simulacionBase.diagnostico === 'success' &&
+      simulacionBase.mesesParaObjetivo === 1,
+    'el escenario base es viable y estima un mes para el objetivo',
+  );
+
+  const recorteCafeteria = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+    categoriaRecorteId: catCafeD.id,
+    porcentajeRecorte: 50,
+  });
+  afirmar(
+    recorteCafeteria.gastoCategoriaPromedio === 4_000 &&
+      recorteCafeteria.ahorroMensualRecorte === 2_000 &&
+      recorteCafeteria.ahorroAnualRecorte === 24_000,
+    'el recorte de una subcategoría usa solo su gasto real',
+  );
+  afirmar(
+    Math.abs(recorteCafeteria.flujoLibreProyectado - 556_666.67) < 0.01,
+    'el recorte incrementa el flujo libre proyectado',
+  );
+
+  const recorteAlimentacion = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+    categoriaRecorteId: catAlimentacionD.id,
+    porcentajeRecorte: 50,
+  });
+  afirmar(
+    Math.abs(recorteAlimentacion.gastoCategoriaPromedio - 42_333.33) < 0.01,
+    'el recorte de una categoría padre incluye sus subcategorías',
+  );
+  afirmar(
+    Math.abs(recorteAlimentacion.ahorroMensualRecorte - 21_166.67) < 0.02 &&
+      Math.abs(recorteAlimentacion.ahorroAnualRecorte - 254_000) < 0.2,
+    'anualiza el ahorro del recorte jerárquico',
+  );
+
+  const simulacionAjustada = await servicio.simularEscenario({
+    montoObjetivo: 520_000,
+    meses: 1,
+  });
+  afirmar(
+    simulacionAjustada.alcanzaCuota === true &&
+      simulacionAjustada.viable === false &&
+      simulacionAjustada.diagnostico === 'warning',
+    'clasifica como ajustada la cuota que rompe la meta',
+  );
+  const simulacionInviable = await servicio.simularEscenario({
+    montoObjetivo: 600_000,
+    meses: 1,
+  });
+  afirmar(
+    simulacionInviable.alcanzaCuota === false &&
+      simulacionInviable.diagnostico === 'danger',
+    'clasifica como inviable la cuota superior al flujo',
+  );
+
+  const fechaFutura = fechaDeMes(1, 1);
+  const reglaGastoFutura = await servicio.crearRecurrencia({
+    monto: 20_000,
+    tipo: 'gasto',
+    fechaInicio: fechaFutura,
+    descripcion: 'Seguro del próximo mes',
+    categoriaId: catTransporteD.id,
+    cuentaId: cuentaD.id,
+    frecuencia: 'mensual',
+  });
+  afirmar(
+    reglaGastoFutura.generadas === 0,
+    'una regla futura no genera movimientos',
+  );
+  const simulacionConGastoFuturo = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+  });
+  afirmar(
+    simulacionConGastoFuturo.compromisoRecurrenteMensual === 20_000 &&
+      simulacionConGastoFuturo.recurrenciasActivas.length === 1,
+    'mensualiza el compromiso de una regla de gasto vigente',
+  );
+  afirmar(
+    Math.abs(simulacionConGastoFuturo.gastosBase - 65_333.33) < 0.01 &&
+      Math.abs(simulacionConGastoFuturo.flujoLibreActual - 534_666.67) < 0.01,
+    'suma la regla al flujo sin tocar el promedio histórico',
+  );
+
+  const reglaIngresoFutura = await servicio.crearRecurrencia({
+    monto: 12_000,
+    tipo: 'ingreso',
+    fechaInicio: fechaFutura,
+    descripcion: 'Consultoría semanal futura',
+    categoriaId: catSalarioD.id,
+    cuentaId: cuentaD.id,
+    frecuencia: 'semanal',
+  });
+  afirmar(
+    reglaIngresoFutura.generadas === 0,
+    'una regla de ingreso futura tampoco genera movimientos',
+  );
+  const simulacionConIngresoFuturo = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+  });
+  afirmar(
+    simulacionConIngresoFuturo.ingresoRecurrenteMensual === 52_000 &&
+      simulacionConIngresoFuturo.ingresosBase === 652_000 &&
+      simulacionConIngresoFuturo.recurrenciasActivas.length === 2,
+    'mensualiza un ingreso semanal (×52/12) en la proyección',
+  );
+
+  const reglaGastoPasada = await servicio.crearRecurrencia({
+    monto: 5_000,
+    tipo: 'gasto',
+    fechaInicio: fechaDeMes(-2, 1),
+    descripcion: 'Streaming mensual',
+    categoriaId: catStreamingD.id,
+    cuentaId: cuentaD.id,
+    frecuencia: 'mensual',
+  });
+  afirmar(
+    reglaGastoPasada.generadas === 3,
+    'una regla pasada genera sus ocurrencias vencidas',
+  );
+  const simulacionSinDobleConteo = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+  });
+  afirmar(
+    simulacionSinDobleConteo.recurrenciasActivas.length === 3 &&
+      simulacionSinDobleConteo.compromisoRecurrenteMensual === 25_000,
+    'incluye todas las reglas activas vigentes en el compromiso',
+  );
+  afirmar(
+    Math.abs(simulacionSinDobleConteo.gastosPromedio - 48_666.67) < 0.01,
+    'el promedio real conserva los movimientos generados por la regla',
+  );
+  afirmar(
+    Math.abs(simulacionSinDobleConteo.gastosBase - 70_333.33) < 0.01,
+    'no cuenta dos veces los movimientos vinculados a reglas activas',
+  );
+  afirmar(
+    Math.abs(simulacionSinDobleConteo.flujoLibrePromedio - 551_333.33) < 0.01,
+    'el flujo histórico también refleja los movimientos recurrentes',
+  );
+
+  await esperarError(
+    () =>
+      servicio.simularEscenario({
+        montoObjetivo: 100_000,
+        meses: 6,
+        categoriaRecorteId: catSalarioD.id,
+        porcentajeRecorte: 10,
+      }),
+    'rechaza recortar una categoría de ingreso',
+  );
+  await esperarError(
+    () =>
+      servicio.simularEscenario({
+        montoObjetivo: 100_000,
+        meses: 6,
+        categoriaRecorteId: catCafeD.id,
+        porcentajeRecorte: 150,
+      }),
+    'rechaza un porcentaje de recorte fuera de rango',
+  );
+  await esperarError(
+    () =>
+      servicio.simularEscenario({
+        montoObjetivo: 100_000,
+        meses: 6,
+        porcentajeRecorte: 50,
+      }),
+    'exige categoría cuando se pide un recorte',
+  );
+  await esperarError(
+    () => servicio.simularEscenario({ montoObjetivo: 0, meses: 6 }),
+    'rechaza un monto objetivo en cero',
+  );
+  await esperarError(
+    () => servicio.simularEscenario({ montoObjetivo: 100_000, meses: 0 }),
+    'rechaza una cantidad de meses en cero',
+  );
+
+  await servicio.cerrarSesion();
+  await esperarError(
+    () => servicio.analizarGastosHormiga(),
+    'exige sesión para analizar gastos hormiga',
+  );
+  await esperarError(
+    () =>
+      servicio.simularEscenario({ montoObjetivo: 100_000, meses: 1 }),
+    'exige sesión para simular escenarios',
   );
 
   console.log(`\n${pruebas} verificaciones correctas.`);

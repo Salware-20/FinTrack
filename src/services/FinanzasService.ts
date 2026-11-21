@@ -7,11 +7,13 @@ import type { DatosTransferencia, Transferencia } from '../models/Transferencia'
 import type { DatosUsuario, Usuario } from '../models/Usuario';
 import type {
   AlertaConcentracionGasto,
+  AnalisisGastosHormiga,
   CambiosPresupuesto,
   CambiosRecurrencia,
   ConfiguracionUsuario,
   EstadoPresupuesto,
   EstadoResultados,
+  FilaCsvDetectada,
   FiltroTransacciones,
   NuevaCategoria,
   NuevaCuenta,
@@ -20,11 +22,13 @@ import type {
   NuevaTransaccion,
   NuevaTransferencia,
   NuevoUsuario,
+  ParametrosSimulacion,
   ResumenFinanciero,
   ResumenMensual,
   ResultadoCreacionRecurrencia,
   ResultadoRecuperacion,
   ResultadoRegistro,
+  ResultadoSimulacion,
   SaldoCuenta,
   TipoTransaccion,
 } from '../models/tipos';
@@ -101,6 +105,24 @@ export interface FinanzasService {
   ): Promise<Transaccion>;
   eliminarTransaccion(id: string): Promise<void>;
 
+  // --- Importación de estados de cuenta -------------------------------------
+  /**
+   * Analiza un CSV bancario y devuelve los movimientos detectados sin guardar
+   * nada. La cuenta debe existir y pertenecer al usuario de la sesión.
+   */
+  previsualizarCsv(
+    contenidoCsv: string,
+    cuentaId: string,
+  ): Promise<FilaCsvDetectada[]>;
+  /**
+   * Inserta de forma atómica los movimientos revisados y devuelve cuántos se
+   * guardaron. Si una sola fila es inválida se rechaza la operación completa.
+   */
+  confirmarImportacionCsv(
+    cuentaId: string,
+    filas: FilaCsvDetectada[],
+  ): Promise<number>;
+
   // --- Recurrencias ---------------------------------------------------------
   listarRecurrencias(): Promise<Recurrencia[]>;
   /** Crea la regla y genera las ocurrencias cuya fecha ya llegó. */
@@ -144,4 +166,24 @@ export interface FinanzasService {
   exportarTransaccionesCsv(filtro?: FiltroTransacciones): Promise<string>;
   /** Borra los movimientos del usuario y restaura categorías y cuenta base. */
   resetearDatos(): Promise<void>;
+
+  // --- Análisis financiero local --------------------------------------------
+
+  /**
+   * Gastos confirmados del periodo que no superan el umbral, agrupados por
+   * comercio/descripción normalizada, con impacto mensual y proyección anual.
+   * Si no se indica periodo se usa el mes actual.
+   * Umbral por defecto: ₡10 000.
+   */
+  analizarGastosHormiga(
+    periodo?: string,
+    umbralMonto?: number,
+  ): Promise<AnalisisGastosHormiga>;
+
+  /**
+   * Simula una compra/meta y un recorte opcional de categoría usando el flujo
+   * de caja promedio de los últimos meses con datos, las recurrencias activas
+   * y la meta de ahorro mensual configurada.
+   */
+  simularEscenario(params: ParametrosSimulacion): Promise<ResultadoSimulacion>;
 }

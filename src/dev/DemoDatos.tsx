@@ -9,6 +9,7 @@ import { useNotificaciones } from './componentes/notificacionesContexto';
 import { SECCIONES } from './secciones';
 import type { Seccion } from './secciones';
 import { Acceso } from './pantallas/Acceso';
+import { Analisis } from './pantallas/Analisis';
 import { Categorias } from './pantallas/Categorias';
 import { Cuentas } from './pantallas/Cuentas';
 import { Dashboard } from './pantallas/Dashboard';
@@ -139,6 +140,8 @@ function ContenidoDemo() {
         return <Categorias />;
       case 'reportes':
         return <Reportes usuario={usuario} />;
+      case 'analisis':
+        return <Analisis irA={setSeccion} />;
       case 'cuenta':
         return <MiCuenta usuario={usuario} onSalir={() => setUsuario(null)} />;
       case 'dashboard':
