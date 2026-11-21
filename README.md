@@ -20,6 +20,7 @@ Aplicación web **local-first** para registrar ingresos y gastos, controlar cuen
 | Presupuestos y alertas | ✅ Listo | Límite mensual por categoría, consumo con subcategorías, avisos y concentración de gasto |
 | Meta de ahorro | ✅ Listo | Meta mensual en la configuración con avance en el resumen |
 | Reportes | ✅ Listo | Estado de resultados, gastos por categoría, PDF y CSV |
+| Análisis financiero | ✅ Listo | Detector de gastos hormiga y simulador «¿me alcanza?» en la demo |
 | Interfaz de producto | ✅ Listo | `src/App.tsx`: resumen, movimientos, cuentas, categorías, reportes y perfil; diseño propio y responsive |
 | Demo funcional | ✅ Referencia | `demo.html`: misma funcionalidad con React Bootstrap, útil para comparar el diseño |
 | Tablas ordenables | ✅ Listo | Ciclo mayor a menor → menor a mayor → orden original en la app y en la demo |
@@ -41,6 +42,7 @@ Aplicación web **local-first** para registrar ingresos y gastos, controlar cuen
 10. Tablas ordenables por clic en el encabezado (y selector de orden en móvil).
 11. Demo de referencia en `src/dev` + `demo.html`, construida solo con React Bootstrap.
 12. PWA instalable con manifiesto, service worker y precache de todos los assets.
+13. Análisis financiero local: detector de gastos hormiga y simulador de escenarios con el flujo real del usuario (demo de referencia).
 
 **Dos entradas, un solo servicio:** `index.html` monta la aplicación real (`src/main.tsx` → `App.tsx`); `demo.html` monta la demo (`src/dev/main-demo.tsx`). Ambas consumen `finanzasService`, pero **solo la app real entra al build de producción**. La demo se conserva como referencia visual y funcional.
 
@@ -149,6 +151,7 @@ app-contabilidad/
 │   │   │   ├── Cuentas.tsx         # Saldos, cuentas y transferencias
 │   │   │   ├── Categorias.tsx      # Árbol ingreso/gasto, presupuestos y alta
 │   │   │   ├── Reportes.tsx        # Periodo, estado de resultados, PDF y CSV
+│   │   │   ├── Analisis.tsx        # Detector de gastos hormiga y simulador
 │   │   │   └── MiCuenta.tsx        # Perfil, contraseña, respaldo y borrado
 │   │   ├── DemoDatos.tsx           # Shell: sesión, navbar y navegación
 │   │   ├── main-demo.tsx           # Montaje de la demo
@@ -178,6 +181,7 @@ app-contabilidad/
 │   │   └── index.ts                # Singleton `finanzasService`
 │   ├── utils/
 │   │   ├── criptografia.ts         # PBKDF2, sales y códigos
+│   │   ├── analisisFinanciero.ts   # Detector y simulador puros (sin IndexedDB)
 │   │   ├── descargas.ts            # Descargar y leer archivos
 │   │   ├── errores.ts              # Normalizador de errores de la UI
 │   │   ├── formato.ts              # Moneda CRC, fechas y etiquetas
@@ -420,6 +424,11 @@ TipoCuenta.Banco;        // 'banco'
 26. La alerta de concentración marca las categorías cuyo gasto alcanza el **30 %** del gasto total del periodo (umbral configurable) y las ordena de mayor a menor porcentaje.
 27. La meta de ahorro mensual se guarda en `metaAhorroMensual`; `0` o ausente equivale a «sin meta». El avance es `max(0, balance del mes) / meta`.
 28. Al importar un respaldo se reemplazan los datos del usuario y se regeneran los ids; se aceptan versiones **1, 2 y 3**, y se rechazan versiones futuras.
+29. El detector de gastos hormiga solo considera **gastos confirmados** del periodo cuyo monto sea **menor o igual** al umbral (₡10 000 por defecto). Las descripciones se agrupan normalizando mayúsculas, tildes, puntuación, ruido bancario y tokens numéricos; la etiqueta visible es la descripción original más frecuente.
+30. El impacto anual del detector es una proyección **lineal** (`total del periodo × 12`). Si el total de fugas o el gasto del periodo es `0`, los porcentajes se devuelven explícitamente como `0` (sin `NaN`).
+31. El simulador promedia hasta los **últimos 3 meses cerrados con datos**. El mes en curso solo se usa cuando no existe historial anterior, para no distorsionar el cálculo con un mes incompleto.
+32. Para proyectar el flujo, el simulador mensualiza las reglas activas (diaria `×365/12`, semanal `×52/12`, mensual `×1`), descarta las vencidas por `fechaFin` y las que empiezan después del mes siguiente, y excluye del promedio los movimientos ya generados por esas reglas para no contarlos dos veces.
+33. Un recorte de categoría incluye sus **subcategorías** y las reglas recurrentes de esa rama. El escenario es `viable` solo si la cuota cabe en el flujo proyectado **y** se conserva la meta de ahorro mensual; si cabe pero sacrifica la meta, el diagnóstico es `warning`; si no cabe, `danger`.
 
 ---
 
@@ -517,6 +526,28 @@ const estados = await finanzasService.obtenerEstadoPresupuestos('2026-11');
 // Cada fila trae límite, gastado, disponible, porcentaje y estadoAlerta:
 // 'normal' | 'advertencia' | 'excedido'.
 ```
+
+### Análisis financiero
+
+| Método | Devuelve | Notas |
+| --- | --- | --- |
+| `analizarGastosHormiga(periodo?, umbralMonto?)` | `AnalisisGastosHormiga` | Periodo actual y ₡10 000 por defecto; solo gastos confirmados |
+| `simularEscenario(params)` | `ResultadoSimulacion` | Compra/meta en cuotas, recorte opcional y meta de ahorro |
+
+```ts
+const analisis = await finanzasService.analizarGastosHormiga('2026-11', 10_000);
+// analisis.fugas: ranking por frecuencia e impacto anual
+
+const escenario = await finanzasService.simularEscenario({
+  montoObjetivo: 450_000,
+  meses: 6,
+  categoriaRecorteId: 'cat-...',
+  porcentajeRecorte: 20,
+});
+// escenario.diagnostico: 'success' | 'warning' | 'danger'
+```
+
+`ParametrosSimulacion` exige `montoObjetivo > 0` y `meses` entero `>= 1`; `porcentajeRecorte` va de 0 a 100 y, si es mayor que 0, requiere una categoría de **gasto** del usuario. Los cálculos puros viven en `src/utils/analisisFinanciero.ts` (`detectarGastosHormiga`, `calcularSimulacion`, `mensualizarMontoRecurrente`, `sumarMeses`) y no dependen de IndexedDB ni de React.
 
 ### Reportes y datos
 
@@ -639,6 +670,7 @@ Versión de la interfaz construida **solo con React Bootstrap** (sin el CSS de p
 | **Cuentas** | Saldos calculados, alta y archivado de cuentas, transferencias entre cuentas; encabezados ordenables |
 | **Categorías** | Árbol ingreso/gasto con uso real y alta de raíces o subcategorías; encabezados ordenables (raíces y hermanos) |
 | **Reportes** | Rango de fechas con atajos, estado de resultados, gráficos, PDF y CSV; encabezados ordenables dentro de cada grupo |
+| **Análisis** | Detector de gastos hormiga con umbral, KPIs y tabla ordenable; simulador interactivo de compras/metas con recorte de categoría y diagnóstico de viabilidad |
 | **Mi cuenta** | Perfil, cambio de contraseña, respaldo exportar/importar, reset y eliminación |
 
 La navegación es por estado (no hay router instalado). La demo usa React Bootstrap y un único CSS propio, `src/dev/componentes/tablaOrdenable.css`, que ajusta el botón del encabezado ordenable. Los resultados de las acciones se informan con toasts; los errores de campo se muestran inline y los fallos de carga con una alerta que permite reintentar.
@@ -865,7 +897,7 @@ Las pantallas de `src/paginas` son la referencia completa de consumo del servici
 ```bash
 npm run build   # tsc -b + vite build
 npm run lint    # ESLint
-npm test        # 103 comprobaciones de comportamiento
+npm test        # 213 comprobaciones de comportamiento
 ```
 
 La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModule` y cubre:
@@ -879,6 +911,7 @@ La prueba de humo (`scripts/smoke.mjs`) usa `fake-indexeddb` y `vite.ssrLoadModu
 - respaldo, importación con ids regenerados y reseteo;
 - movimientos recurrentes: ocurrencias vencidas, idempotencia, reglas futuras sin movimientos, pausa/reanudación, fin de mes, respaldo/importación con remapeo y aislamiento entre usuarios;
 - presupuestos: estados normal/advertencia/excedido, consumo con subcategorías, alertas de concentración y respaldo v3;
+- análisis financiero: agrupación de descripciones, umbral inclusivo, proyección anual, porcentajes sin `NaN`, promedio con meses cerrados, mensualización de recurrencias, vigencia de reglas, recorte con subcategorías, ausencia de doble conteo y diagnósticos viable/ajustado/inviable;
 - normalización de errores de validación, sesión, cuota de almacenamiento y fallos técnicos;
 - cambio de contraseña, recuperación con rotación de código y eliminación de cuenta;
 - ordenamiento de tablas: ciclo descendente/ascendente/original, texto con acentos y números, fechas, montos, valores vacíos al final y empates estables.
@@ -903,6 +936,7 @@ La instalación y el modo offline se comprueban con `npm run preview` y DevTools
 - [x] Presupuestos por categoría y alertas de concentración.
 - [x] Meta de ahorro mensual con progreso.
 - [x] Tablas ordenables por encabezado y selector móvil.
+- [x] Detector de gastos hormiga y simulador de escenarios en la demo.
 - [x] Edición de movimientos desde la UI.
 - [ ] Edición de monto, categoría, frecuencia y fecha final de reglas recurrentes desde la UI.
 - [ ] Despliegue público en Vercel (guía lista en este README).
@@ -936,3 +970,4 @@ La instalación y el modo offline se comprueban con `npm run preview` y DevTools
 | 2026-11-17 | **Tablas ordenables en la demo.** Módulo puro `ordenTabla.ts` (comparadores de texto con `Intl.Collator` en español, número, fecha y booleano), hook `useOrdenTabla` y encabezado accesible `ThOrdenable` con `aria-sort`. Cada columna cicla mayor a menor → menor a mayor → orden original; los montos se ordenan por valor absoluto y los vacíos quedan al final. Se aplica a Movimientos, Cuentas, reglas recurrentes, Categorías (raíces y hermanos, jerarquía intacta) y Reportes (solo filas internas de cada grupo); el Dashboard no cambia. El orden es en memoria y se reinicia al navegar. Sin dependencias nuevas y todo dentro de `src/dev`. La prueba de humo sube de 91 a 103 comprobaciones. | `src/dev/componentes/ordenTabla.ts`, `useOrdenTabla.ts`, `ThOrdenable.tsx`, `tablaOrdenable.css`, `TablaRecurrencias.tsx`, `src/dev/pantallas/{Movimientos,Cuentas,Categorias,Reportes}.tsx`, `scripts/smoke.mjs`, `README.md` |
 | 2026-11-18 | **Interfaz de producto integrada** (commits `4cafca2`, `8056822`, `ed0a969`). La app real sale del placeholder: `App.tsx` orquesta sesión, navegación por estado y procesamiento de recurrencias; `src/paginas/*` implementa acceso, resumen, movimientos (alta, edición, filtros, repetición), cuentas, categorías, reportes y mi cuenta. Se añade un sistema de diseño propio en `src/index.css` (tokens de color, IBM Plex Sans, Bootstrap Icons, layout responsive con barra inferior móvil, estilos de impresión y `prefers-reduced-motion`). Se incorporan la gestión de presupuestos y la meta de ahorro, las tablas ordenables del producto (`orden.ts`, `useOrden`, `ThOrdenable`, `SelectorOrden` para móvil) y la edición de movimientos. La demo de `src/dev` se conserva íntegra como referencia y sigue fuera del build. Build, lint y 103 pruebas en verde. | `src/App.tsx`, `src/main.tsx`, `src/componentes/*`, `src/paginas/*`, `src/index.css`, `package.json`, `package-lock.json` |
 | 2026-11-18 | **README actualizado al estado real del proyecto.** Se corrigen el estado y el alcance (interfaz de producto lista, esquema Dexie v3, presupuestos y meta de ahorro), se documenta la entidad `Presupuesto` con sus reglas de negocio y contrato, la tabla `presupuestos` y los respaldos v3 (compatibles v1/v2), el sistema de diseño y las tablas ordenables del producto, la diferencia entre app real y demo de referencia, el despliegue en Vercel y el estado real de la verificación (103 comprobaciones, auditoría de dependencias de build). | `README.md` |
+| 2026-11-20 | **Análisis financiero en la demo.** Nuevo módulo puro `analisisFinanciero.ts` con el detector de gastos hormiga (agrupación por descripción normalizada, umbral inclusivo configurable, proyección anual lineal y porcentajes protegidos contra división por cero) y el simulador de escenarios (hasta 3 meses cerrados, recurrencias activas mensualizadas sin doble conteo, recorte por categoría con subcategorías y diagnóstico viable/ajustado/inviable). Se añaden las interfaces y constantes en `tipos.ts`, los métodos `analizarGastosHormiga` y `simularEscenario` al contrato y al servicio local, la pantalla `Analisis.tsx` con dos tarjetas, su registro en la navegación de la demo y 58 pruebas nuevas (213 en total). Sin dependencias nuevas, sin cambios en `App.tsx`, `main.tsx`, CSS ni en el esquema Dexie. Build, lint y pruebas en verde. | `src/utils/analisisFinanciero.ts`, `src/models/tipos.ts`, `src/services/*`, `src/dev/pantallas/Analisis.tsx`, `src/dev/secciones.ts`, `src/dev/DemoDatos.tsx`, `scripts/smoke.mjs`, `README.md` |

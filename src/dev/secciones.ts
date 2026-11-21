@@ -5,6 +5,7 @@ export type Seccion =
   | 'cuentas'
   | 'categorias'
   | 'reportes'
+  | 'analisis'
   | 'cuenta';
 
 export const SECCIONES: { id: Seccion; etiqueta: string; icono: string }[] = [
@@ -13,5 +14,6 @@ export const SECCIONES: { id: Seccion; etiqueta: string; icono: string }[] = [
   { id: 'cuentas', etiqueta: 'Cuentas', icono: '🏦' },
   { id: 'categorias', etiqueta: 'Categorías', icono: '🏷️' },
   { id: 'reportes', etiqueta: 'Reportes', icono: '📄' },
+  { id: 'analisis', etiqueta: 'Análisis', icono: '🔮' },
   { id: 'cuenta', etiqueta: 'Mi cuenta', icono: '👤' },
 ];

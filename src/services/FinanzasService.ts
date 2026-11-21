@@ -7,6 +7,7 @@ import type { DatosTransferencia, Transferencia } from '../models/Transferencia'
 import type { DatosUsuario, Usuario } from '../models/Usuario';
 import type {
   AlertaConcentracionGasto,
+  AnalisisGastosHormiga,
   CambiosPresupuesto,
   CambiosRecurrencia,
   ConfiguracionUsuario,
@@ -21,11 +22,13 @@ import type {
   NuevaTransaccion,
   NuevaTransferencia,
   NuevoUsuario,
+  ParametrosSimulacion,
   ResumenFinanciero,
   ResumenMensual,
   ResultadoCreacionRecurrencia,
   ResultadoRecuperacion,
   ResultadoRegistro,
+  ResultadoSimulacion,
   SaldoCuenta,
   TipoTransaccion,
 } from '../models/tipos';
@@ -163,4 +166,24 @@ export interface FinanzasService {
   exportarTransaccionesCsv(filtro?: FiltroTransacciones): Promise<string>;
   /** Borra los movimientos del usuario y restaura categorías y cuenta base. */
   resetearDatos(): Promise<void>;
+
+  // --- Análisis financiero local --------------------------------------------
+
+  /**
+   * Gastos confirmados del periodo que no superan el umbral, agrupados por
+   * comercio/descripción normalizada, con impacto mensual y proyección anual.
+   * Si no se indica periodo se usa el mes actual.
+   * Umbral por defecto: ₡10 000.
+   */
+  analizarGastosHormiga(
+    periodo?: string,
+    umbralMonto?: number,
+  ): Promise<AnalisisGastosHormiga>;
+
+  /**
+   * Simula una compra/meta y un recorte opcional de categoría usando el flujo
+   * de caja promedio de los últimos meses con datos, las recurrencias activas
+   * y la meta de ahorro mensual configurada.
+   */
+  simularEscenario(params: ParametrosSimulacion): Promise<ResultadoSimulacion>;
 }

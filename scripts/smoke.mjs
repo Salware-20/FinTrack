@@ -41,6 +41,17 @@ const {
   normalizarFechaCruda,
   normalizarMontoCrudo,
 } = await servidor.ssrLoadModule('/src/utils/importadorCsv.ts');
+const {
+  detectarGastosHormiga,
+  normalizarDescripcionComercio,
+  claveComercio,
+  calcularSimulacion,
+  mensualizarMontoRecurrente,
+  sumarMeses,
+} = await servidor.ssrLoadModule('/src/utils/analisisFinanciero.ts');
+const { UMBRAL_GASTOS_HORMIGA } = await servidor.ssrLoadModule(
+  '/src/models/tipos.ts',
+);
 
 let pruebas = 0;
 function afirmar(condicion, mensaje) {
@@ -947,6 +958,577 @@ try {
       .map((fila) => fila.posicion)
       .join(',') === '2,1,3',
     'mantiene el orden original en los empates',
+  );
+
+  // Análisis financiero local
+  console.log('\nAnálisis financiero: detector de gastos hormiga');
+  afirmar(
+    UMBRAL_GASTOS_HORMIGA === 10_000,
+    'el umbral por defecto es ₡10 000',
+  );
+  afirmar(
+    normalizarDescripcionComercio('  CAFETERÍA  Ñandú!! ') ===
+      'cafeteria nandu',
+    'normaliza mayúsculas, tildes, eñes y puntuación',
+  );
+  afirmar(
+    claveComercio('COMPRA POS CAFETERÍA ÑANDÚ 123') === 'cafeteria nandu',
+    'descarta ruido bancario y tokens numéricos para agrupar comercios',
+  );
+
+  const gastosHormigaUnitarios = [
+    {
+      monto: 4_000,
+      fecha: '2026-11-02',
+      descripcion: 'CAFETERÍA ÑANDÚ',
+      categoriaId: 'cafe',
+      categoriaNombre: 'Alimentación › Cafetería',
+    },
+    {
+      monto: 4_000,
+      fecha: '2026-11-05',
+      descripcion: 'Cafeteria Nandu',
+      categoriaId: 'cafe',
+      categoriaNombre: 'Alimentación › Cafetería',
+    },
+    {
+      monto: 4_000,
+      fecha: '2026-11-09',
+      descripcion: 'COMPRA POS CAFETERIA NANDU 123',
+      categoriaId: 'cafe',
+      categoriaNombre: 'Alimentación › Cafetería',
+    },
+    {
+      monto: 9_000,
+      fecha: '2026-11-10',
+      descripcion: 'Farmacia',
+      categoriaId: 'farmacia',
+      categoriaNombre: 'Salud › Farmacia',
+    },
+    {
+      monto: 25_000,
+      fecha: '2026-11-11',
+      descripcion: 'Supermercado',
+      categoriaId: 'super',
+      categoriaNombre: 'Alimentación › Supermercado',
+    },
+    {
+      monto: 3_500,
+      fecha: '2026-10-01',
+      descripcion: 'Cafetería Ñandú',
+      categoriaId: 'cafe',
+      categoriaNombre: 'Alimentación › Cafetería',
+    },
+  ];
+
+  const analisisUnitario = detectarGastosHormiga(gastosHormigaUnitarios, {
+    periodo: '2026-11',
+    umbralMonto: 10_000,
+  });
+  afirmar(
+    analisisUnitario.totalMensual === 21_000 &&
+      analisisUnitario.proyeccionAnual === 252_000,
+    'suma los gastos bajo el umbral y proyecta el año (×12)',
+  );
+  afirmar(
+    analisisUnitario.totalGastosPeriodo === 46_000 &&
+      analisisUnitario.porcentajeDelGastoTotal === 45.65,
+    'compara la fuga con el gasto total del periodo',
+  );
+  afirmar(
+    analisisUnitario.fugas.length === 2 &&
+      analisisUnitario.fugas[0].clave === 'cafeteria nandu' &&
+      analisisUnitario.fugas[0].cantidad === 3 &&
+      analisisUnitario.fugas[0].totalPeriodo === 12_000 &&
+      analisisUnitario.fugas[0].proyeccionAnual === 144_000,
+    'agrupa las descripciones similares y las ordena por frecuencia',
+  );
+  afirmar(
+    analisisUnitario.cantidadFugasFrecuentes === 1 &&
+      analisisUnitario.fugas[0].esFrecuente === true,
+    'identifica las fugas con dos o más movimientos',
+  );
+  afirmar(
+    analisisUnitario.fugas[0].porcentajeSobreFugas === 57.14,
+    'calcula el porcentaje de cada fuga sobre el total de fugas',
+  );
+
+  const analisisCincoMil = detectarGastosHormiga(gastosHormigaUnitarios, {
+    periodo: '2026-11',
+    umbralMonto: 5_000,
+  });
+  afirmar(
+    analisisCincoMil.totalMensual === 12_000 &&
+      analisisCincoMil.fugas.length === 1,
+    'con umbral de ₡5 000 solo conserva la cafetería',
+  );
+  const analisisQuinceMil = detectarGastosHormiga(gastosHormigaUnitarios, {
+    periodo: '2026-11',
+    umbralMonto: 15_000,
+  });
+  afirmar(
+    analisisQuinceMil.totalMensual === 21_000 &&
+      analisisQuinceMil.fugas.length === 2,
+    'con umbral de ₡15 000 mantiene los dos comercios',
+  );
+  const analisisVeinticincoMil = detectarGastosHormiga(gastosHormigaUnitarios, {
+    periodo: '2026-11',
+    umbralMonto: 25_000,
+  });
+  afirmar(
+    analisisVeinticincoMil.totalMensual === 46_000 &&
+      analisisVeinticincoMil.fugas.length === 3,
+    'el umbral incluye los montos exactamente iguales',
+  );
+
+  const analisisVacio = detectarGastosHormiga([], { periodo: '2026-11' });
+  afirmar(
+    analisisVacio.totalMensual === 0 &&
+      analisisVacio.fugas.length === 0 &&
+      analisisVacio.proyeccionAnual === 0 &&
+      analisisVacio.porcentajeDelGastoTotal === 0,
+    'sin gastos devuelve ceros sin NaN',
+  );
+  afirmar(
+    !Number.isNaN(analisisVacio.porcentajeDelGastoTotal),
+    'el porcentaje del gasto total nunca es NaN',
+  );
+
+  console.log('\nAnálisis financiero: simulador (funciones puras)');
+  const contextoBase = {
+    periodoReferencia: '2026-11',
+    mesesAnalizados: ['2026-09', '2026-10', '2026-11'],
+    ingresosPromedio: 600_000,
+    gastosPromedio: 450_000,
+    flujoLibrePromedio: 150_000,
+    ingresosBase: 600_000,
+    gastosBase: 450_000,
+    flujoLibreActual: 150_000,
+    gastoCategoriaPromedio: 40_000,
+    categoriaRecorteNombre: 'Cafetería',
+    metaAhorroMensual: 50_000,
+    ingresoRecurrenteMensual: 0,
+    compromisoRecurrenteMensual: 0,
+    recurrenciasActivas: [],
+  };
+
+  const escenarioViable = calcularSimulacion(contextoBase, {
+    montoObjetivo: 600_000,
+    meses: 6,
+  });
+  afirmar(
+    escenarioViable.cuotaMensual === 100_000 &&
+      escenarioViable.disponibleParaCuota === 100_000 &&
+      escenarioViable.diferenciaMensual === 0,
+    'reparte el objetivo en cuotas y descuenta la meta de ahorro',
+  );
+  afirmar(
+    escenarioViable.viable === true &&
+      escenarioViable.diagnostico === 'success',
+    'marca como viable el escenario que conserva la meta',
+  );
+  afirmar(
+    escenarioViable.mesesParaObjetivo === 4 &&
+      escenarioViable.fechaEstimada === '2027-03',
+    'estima los meses reales para juntar el monto y su fecha',
+  );
+
+  const escenarioAjustado = calcularSimulacion(contextoBase, {
+    montoObjetivo: 120_000,
+    meses: 1,
+  });
+  afirmar(
+    escenarioAjustado.alcanzaCuota === true &&
+      escenarioAjustado.viable === false &&
+      escenarioAjustado.diagnostico === 'warning' &&
+      escenarioAjustado.diferenciaMensual === -20_000,
+    'avisa cuando la cuota cabe pero sacrifica la meta',
+  );
+
+  const escenarioInviable = calcularSimulacion(contextoBase, {
+    montoObjetivo: 200_000,
+    meses: 1,
+  });
+  afirmar(
+    escenarioInviable.alcanzaCuota === false &&
+      escenarioInviable.diagnostico === 'danger',
+    'marca como inviable la cuota que supera el flujo',
+  );
+
+  const escenarioConRecorte = calcularSimulacion(contextoBase, {
+    montoObjetivo: 160_000,
+    meses: 1,
+    categoriaRecorteId: 'cat-cafe',
+    porcentajeRecorte: 50,
+  });
+  afirmar(
+    escenarioConRecorte.ahorroMensualRecorte === 20_000 &&
+      escenarioConRecorte.ahorroAnualRecorte === 240_000 &&
+      escenarioConRecorte.flujoLibreProyectado === 170_000,
+    'el recorte libera flujo mensual y se anualiza para comparar',
+  );
+  afirmar(
+    escenarioConRecorte.diagnostico === 'warning',
+    'el recorte mejora el diagnóstico de inviable a ajustado',
+  );
+  afirmar(
+    calcularSimulacion(contextoBase, {
+      montoObjetivo: 160_000,
+      meses: 1,
+    }).diagnostico === 'danger',
+    'sin el recorte el mismo escenario es inviable',
+  );
+
+  const escenarioSinFlujo = calcularSimulacion(
+    {
+      ...contextoBase,
+      ingresosBase: 100_000,
+      gastosBase: 200_000,
+      flujoLibreActual: -100_000,
+      metaAhorroMensual: 0,
+    },
+    { montoObjetivo: 50_000, meses: 1 },
+  );
+  afirmar(
+    escenarioSinFlujo.mesesParaObjetivo === null &&
+      escenarioSinFlujo.fechaEstimada === null,
+    'sin flujo positivo no promete una fecha de ahorro',
+  );
+
+  afirmar(
+    mensualizarMontoRecurrente('mensual', 10_000) === 10_000,
+    'mensualiza una regla mensual sin cambios',
+  );
+  afirmar(
+    mensualizarMontoRecurrente('semanal', 10_000) === 43_333.33,
+    'mensualiza una regla semanal (×52/12)',
+  );
+  afirmar(
+    mensualizarMontoRecurrente('diaria', 10_000) === 304_166.67,
+    'mensualiza una regla diaria (×365/12)',
+  );
+  afirmar(
+    sumarMeses('2026-11', 4) === '2027-03' &&
+      sumarMeses('2026-12', 1) === '2027-01' &&
+      sumarMeses('2026-01', 12) === '2027-01',
+    'suma meses cruzando el año correctamente',
+  );
+
+  console.log('\nAnálisis financiero: servicio');
+  const fechaLocalAnalisis = (fecha) => {
+    const anio = fecha.getFullYear();
+    const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+    const dia = String(fecha.getDate()).padStart(2, '0');
+    return `${anio}-${mes}-${dia}`;
+  };
+  const mesRelativo = (desplazamiento) => {
+    const ahora = new Date();
+    return fechaLocalAnalisis(
+      new Date(ahora.getFullYear(), ahora.getMonth() + desplazamiento, 1),
+    ).slice(0, 7);
+  };
+  const fechaDeMes = (desplazamiento, dia = 1) =>
+    `${mesRelativo(desplazamiento)}-${String(dia).padStart(2, '0')}`;
+
+  await servicio.registrar({
+    nombre: 'Dora Análisis',
+    correo: 'dora@example.com',
+    contrasena: 'analisis123',
+  });
+  await servicio.actualizarConfiguracion({ metaAhorroMensual: 50_000 });
+
+  const cuentaD = (await servicio.listarCuentas())[0];
+  const categoriasD = await servicio.listarCategorias();
+  const catD = (nombre) =>
+    categoriasD.find((categoria) => categoria.nombre === nombre);
+  const catSuperD = catD('Supermercado');
+  const catCafeD = catD('Cafetería');
+  const catFarmaciaD = catD('Farmacia');
+  const catAlimentacionD = catD('Alimentación');
+  const catSalarioD = catD('Salario');
+  const catTransporteD = catD('Transporte');
+  const catStreamingD = catD('Streaming');
+
+  const movimientosD = [
+    { mes: -3, tipo: 'ingreso', monto: 600_000, descripcion: 'Salario', categoriaId: catSalarioD.id },
+    { mes: -3, tipo: 'gasto', monto: 40_000, descripcion: 'Supermercado', categoriaId: catSuperD.id },
+    { mes: -2, tipo: 'ingreso', monto: 600_000, descripcion: 'Salario', categoriaId: catSalarioD.id },
+    { mes: -2, tipo: 'gasto', monto: 50_000, descripcion: 'Supermercado', categoriaId: catSuperD.id },
+    { mes: -1, tipo: 'ingreso', monto: 600_000, descripcion: 'Salario', categoriaId: catSalarioD.id },
+    { mes: -1, tipo: 'gasto', monto: 25_000, descripcion: 'Supermercado', categoriaId: catSuperD.id },
+    { mes: -1, tipo: 'gasto', monto: 4_000, descripcion: 'CAFETERÍA ÑANDÚ', categoriaId: catCafeD.id },
+    { mes: -1, tipo: 'gasto', monto: 4_000, descripcion: 'Cafeteria Nandu', categoriaId: catCafeD.id },
+    { mes: -1, tipo: 'gasto', monto: 4_000, descripcion: 'COMPRA POS CAFETERIA NANDU 123', categoriaId: catCafeD.id },
+    { mes: -1, tipo: 'gasto', monto: 9_000, descripcion: 'Farmacia', categoriaId: catFarmaciaD.id },
+    { mes: 0, tipo: 'ingreso', monto: 100_000, descripcion: 'Salario', categoriaId: catSalarioD.id },
+    { mes: 0, tipo: 'gasto', monto: 25_000, descripcion: 'Supermercado', categoriaId: catSuperD.id },
+    { mes: 0, tipo: 'gasto', monto: 4_000, descripcion: 'CAFETERÍA ÑANDÚ', categoriaId: catCafeD.id },
+    { mes: 0, tipo: 'gasto', monto: 4_000, descripcion: 'Cafeteria Nandu', categoriaId: catCafeD.id },
+    { mes: 0, tipo: 'gasto', monto: 4_000, descripcion: 'COMPRA POS CAFETERIA NANDU 123', categoriaId: catCafeD.id },
+    { mes: 0, tipo: 'gasto', monto: 9_000, descripcion: 'Farmacia', categoriaId: catFarmaciaD.id },
+    { mes: 0, tipo: 'gasto', monto: 3_000, descripcion: 'Cafetería pendiente', categoriaId: catCafeD.id, estado: 'pendiente' },
+  ];
+
+  for (const movimiento of movimientosD) {
+    await servicio.crearTransaccion({
+      monto: movimiento.monto,
+      tipo: movimiento.tipo,
+      fecha: fechaDeMes(movimiento.mes),
+      descripcion: movimiento.descripcion,
+      categoriaId: movimiento.categoriaId,
+      cuentaId: cuentaD.id,
+      estado: movimiento.estado,
+    });
+  }
+
+  const analisisServicio = await servicio.analizarGastosHormiga(
+    mesRelativo(0),
+    10_000,
+  );
+  afirmar(
+    analisisServicio.totalMensual === 21_000 &&
+      analisisServicio.proyeccionAnual === 252_000 &&
+      analisisServicio.totalGastosPeriodo === 46_000,
+    'el servicio analiza solo los gastos confirmados del mes',
+  );
+  afirmar(
+    analisisServicio.fugas[0].clave === 'cafeteria nandu' &&
+      analisisServicio.fugas[0].cantidad === 3 &&
+      analisisServicio.fugas[0].proyeccionAnual === 144_000 &&
+      analisisServicio.cantidadFugasFrecuentes === 1,
+    'devuelve el ranking de fugas frecuentes del servicio',
+  );
+  afirmar(
+    (await servicio.analizarGastosHormiga(mesRelativo(0), 5_000))
+      .totalMensual === 12_000,
+    'el servicio respeta un umbral personalizado',
+  );
+  afirmar(
+    (await servicio.analizarGastosHormiga(mesRelativo(0))).umbralMonto ===
+      10_000,
+    'el servicio aplica el umbral por defecto',
+  );
+  await esperarError(
+    () => servicio.analizarGastosHormiga('2026-13'),
+    'rechaza un periodo con mes inexistente',
+  );
+  await esperarError(
+    () => servicio.analizarGastosHormiga(mesRelativo(0), -1),
+    'rechaza un umbral negativo',
+  );
+
+  const simulacionBase = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+  });
+  afirmar(
+    simulacionBase.mesesAnalizados.length === 3 &&
+      simulacionBase.mesesAnalizados[0] === mesRelativo(-3) &&
+      simulacionBase.mesesAnalizados[2] === mesRelativo(-1),
+    'prioriza los meses cerrados y excluye el mes actual incompleto',
+  );
+  afirmar(
+    simulacionBase.ingresosPromedio === 600_000 &&
+      Math.abs(simulacionBase.gastosPromedio - 45_333.33) < 0.01 &&
+      Math.abs(simulacionBase.flujoLibrePromedio - 554_666.67) < 0.01,
+    'calcula promedios reales sobre los meses analizados',
+  );
+  afirmar(
+    Math.abs(simulacionBase.gastosBase - 45_333.33) < 0.01 &&
+      simulacionBase.viable === true &&
+      simulacionBase.diagnostico === 'success' &&
+      simulacionBase.mesesParaObjetivo === 1,
+    'el escenario base es viable y estima un mes para el objetivo',
+  );
+
+  const recorteCafeteria = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+    categoriaRecorteId: catCafeD.id,
+    porcentajeRecorte: 50,
+  });
+  afirmar(
+    recorteCafeteria.gastoCategoriaPromedio === 4_000 &&
+      recorteCafeteria.ahorroMensualRecorte === 2_000 &&
+      recorteCafeteria.ahorroAnualRecorte === 24_000,
+    'el recorte de una subcategoría usa solo su gasto real',
+  );
+  afirmar(
+    Math.abs(recorteCafeteria.flujoLibreProyectado - 556_666.67) < 0.01,
+    'el recorte incrementa el flujo libre proyectado',
+  );
+
+  const recorteAlimentacion = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+    categoriaRecorteId: catAlimentacionD.id,
+    porcentajeRecorte: 50,
+  });
+  afirmar(
+    Math.abs(recorteAlimentacion.gastoCategoriaPromedio - 42_333.33) < 0.01,
+    'el recorte de una categoría padre incluye sus subcategorías',
+  );
+  afirmar(
+    Math.abs(recorteAlimentacion.ahorroMensualRecorte - 21_166.67) < 0.02 &&
+      Math.abs(recorteAlimentacion.ahorroAnualRecorte - 254_000) < 0.2,
+    'anualiza el ahorro del recorte jerárquico',
+  );
+
+  const simulacionAjustada = await servicio.simularEscenario({
+    montoObjetivo: 520_000,
+    meses: 1,
+  });
+  afirmar(
+    simulacionAjustada.alcanzaCuota === true &&
+      simulacionAjustada.viable === false &&
+      simulacionAjustada.diagnostico === 'warning',
+    'clasifica como ajustada la cuota que rompe la meta',
+  );
+  const simulacionInviable = await servicio.simularEscenario({
+    montoObjetivo: 600_000,
+    meses: 1,
+  });
+  afirmar(
+    simulacionInviable.alcanzaCuota === false &&
+      simulacionInviable.diagnostico === 'danger',
+    'clasifica como inviable la cuota superior al flujo',
+  );
+
+  const fechaFutura = fechaDeMes(1, 1);
+  const reglaGastoFutura = await servicio.crearRecurrencia({
+    monto: 20_000,
+    tipo: 'gasto',
+    fechaInicio: fechaFutura,
+    descripcion: 'Seguro del próximo mes',
+    categoriaId: catTransporteD.id,
+    cuentaId: cuentaD.id,
+    frecuencia: 'mensual',
+  });
+  afirmar(
+    reglaGastoFutura.generadas === 0,
+    'una regla futura no genera movimientos',
+  );
+  const simulacionConGastoFuturo = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+  });
+  afirmar(
+    simulacionConGastoFuturo.compromisoRecurrenteMensual === 20_000 &&
+      simulacionConGastoFuturo.recurrenciasActivas.length === 1,
+    'mensualiza el compromiso de una regla de gasto vigente',
+  );
+  afirmar(
+    Math.abs(simulacionConGastoFuturo.gastosBase - 65_333.33) < 0.01 &&
+      Math.abs(simulacionConGastoFuturo.flujoLibreActual - 534_666.67) < 0.01,
+    'suma la regla al flujo sin tocar el promedio histórico',
+  );
+
+  const reglaIngresoFutura = await servicio.crearRecurrencia({
+    monto: 12_000,
+    tipo: 'ingreso',
+    fechaInicio: fechaFutura,
+    descripcion: 'Consultoría semanal futura',
+    categoriaId: catSalarioD.id,
+    cuentaId: cuentaD.id,
+    frecuencia: 'semanal',
+  });
+  afirmar(
+    reglaIngresoFutura.generadas === 0,
+    'una regla de ingreso futura tampoco genera movimientos',
+  );
+  const simulacionConIngresoFuturo = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+  });
+  afirmar(
+    simulacionConIngresoFuturo.ingresoRecurrenteMensual === 52_000 &&
+      simulacionConIngresoFuturo.ingresosBase === 652_000 &&
+      simulacionConIngresoFuturo.recurrenciasActivas.length === 2,
+    'mensualiza un ingreso semanal (×52/12) en la proyección',
+  );
+
+  const reglaGastoPasada = await servicio.crearRecurrencia({
+    monto: 5_000,
+    tipo: 'gasto',
+    fechaInicio: fechaDeMes(-2, 1),
+    descripcion: 'Streaming mensual',
+    categoriaId: catStreamingD.id,
+    cuentaId: cuentaD.id,
+    frecuencia: 'mensual',
+  });
+  afirmar(
+    reglaGastoPasada.generadas === 3,
+    'una regla pasada genera sus ocurrencias vencidas',
+  );
+  const simulacionSinDobleConteo = await servicio.simularEscenario({
+    montoObjetivo: 300_000,
+    meses: 6,
+  });
+  afirmar(
+    simulacionSinDobleConteo.recurrenciasActivas.length === 3 &&
+      simulacionSinDobleConteo.compromisoRecurrenteMensual === 25_000,
+    'incluye todas las reglas activas vigentes en el compromiso',
+  );
+  afirmar(
+    Math.abs(simulacionSinDobleConteo.gastosPromedio - 48_666.67) < 0.01,
+    'el promedio real conserva los movimientos generados por la regla',
+  );
+  afirmar(
+    Math.abs(simulacionSinDobleConteo.gastosBase - 70_333.33) < 0.01,
+    'no cuenta dos veces los movimientos vinculados a reglas activas',
+  );
+  afirmar(
+    Math.abs(simulacionSinDobleConteo.flujoLibrePromedio - 551_333.33) < 0.01,
+    'el flujo histórico también refleja los movimientos recurrentes',
+  );
+
+  await esperarError(
+    () =>
+      servicio.simularEscenario({
+        montoObjetivo: 100_000,
+        meses: 6,
+        categoriaRecorteId: catSalarioD.id,
+        porcentajeRecorte: 10,
+      }),
+    'rechaza recortar una categoría de ingreso',
+  );
+  await esperarError(
+    () =>
+      servicio.simularEscenario({
+        montoObjetivo: 100_000,
+        meses: 6,
+        categoriaRecorteId: catCafeD.id,
+        porcentajeRecorte: 150,
+      }),
+    'rechaza un porcentaje de recorte fuera de rango',
+  );
+  await esperarError(
+    () =>
+      servicio.simularEscenario({
+        montoObjetivo: 100_000,
+        meses: 6,
+        porcentajeRecorte: 50,
+      }),
+    'exige categoría cuando se pide un recorte',
+  );
+  await esperarError(
+    () => servicio.simularEscenario({ montoObjetivo: 0, meses: 6 }),
+    'rechaza un monto objetivo en cero',
+  );
+  await esperarError(
+    () => servicio.simularEscenario({ montoObjetivo: 100_000, meses: 0 }),
+    'rechaza una cantidad de meses en cero',
+  );
+
+  await servicio.cerrarSesion();
+  await esperarError(
+    () => servicio.analizarGastosHormiga(),
+    'exige sesión para analizar gastos hormiga',
+  );
+  await esperarError(
+    () =>
+      servicio.simularEscenario({ montoObjetivo: 100_000, meses: 1 }),
+    'exige sesión para simular escenarios',
   );
 
   console.log(`\n${pruebas} verificaciones correctas.`);

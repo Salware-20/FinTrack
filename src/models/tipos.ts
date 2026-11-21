@@ -209,6 +209,148 @@ export interface AlertaConcentracionGasto {
   umbral: number;
 }
 
+// --- Análisis financiero local ---------------------------------------------
+
+/** Umbral por defecto del detector de gastos hormiga: ₡10 000. */
+export const UMBRAL_GASTOS_HORMIGA = 10_000;
+
+/** Fuga de gasto pequeño agrupada por descripción normalizada. */
+export interface FugaGastoHormiga {
+  /** Clave normalizada usada para agrupar descripciones similares. */
+  clave: string;
+  /** Descripción original más representativa del grupo. */
+  etiqueta: string;
+  categoriaId: string;
+  categoriaNombre: string;
+  cantidad: number;
+  /** Suma real en el periodo analizado. */
+  totalPeriodo: number;
+  /** Promedio por movimiento. */
+  promedio: number;
+  /** Estimación lineal: totalPeriodo × 12. */
+  proyeccionAnual: number;
+  /** Porcentaje sobre el total de gastos hormiga del periodo. */
+  porcentajeSobreFugas: number;
+  /** Verdadero si el grupo tiene 2 o más movimientos. */
+  esFrecuente: boolean;
+  primeraFecha: string;
+  ultimaFecha: string;
+}
+
+/** Resultado del detector de gastos hormiga para un periodo. */
+export interface AnalisisGastosHormiga {
+  /** Periodo analizado en formato AAAA-MM. */
+  periodo: string;
+  umbralMonto: number;
+  /** Gastos confirmados del periodo con monto <= umbral. */
+  cantidadGastos: number;
+  /** Suma de esos gastos en el periodo. */
+  totalMensual: number;
+  /** totalMensual × 12. */
+  proyeccionAnual: number;
+  /** Total de gastos confirmados del periodo, sin importar el monto. */
+  totalGastosPeriodo: number;
+  /** Porcentaje que representan los gastos hormiga del total del periodo. */
+  porcentajeDelGastoTotal: number;
+  /** Cantidad de grupos con 2 o más movimientos. */
+  cantidadFugasFrecuentes: number;
+  /** Ranking por frecuencia y luego por impacto anual. */
+  fugas: FugaGastoHormiga[];
+}
+
+/** Diagnóstico visual; los valores coinciden con las variantes de Bootstrap. */
+export const DiagnosticoSimulacion = {
+  Viable: 'success',
+  Ajustado: 'warning',
+  Inviable: 'danger',
+} as const;
+
+export type DiagnosticoSimulacion =
+  (typeof DiagnosticoSimulacion)[keyof typeof DiagnosticoSimulacion];
+
+/** Recurrencia activa con su monto traducido a un equivalente mensual. */
+export interface RecurrenciaMensualizada {
+  id: string;
+  categoriaId: string;
+  descripcion: string;
+  tipo: TipoTransaccion;
+  frecuencia: FrecuenciaRecurrencia;
+  monto: number;
+  montoMensual: number;
+}
+
+/** Parámetros del simulador de escenarios. */
+export interface ParametrosSimulacion {
+  /** Monto de la compra o meta; siempre positivo. */
+  montoObjetivo: number;
+  /** Número de meses o cuotas; entero >= 1. */
+  meses: number;
+  /** Categoría de gasto a recortar; opcional. */
+  categoriaRecorteId?: string;
+  /** Porcentaje de recorte entre 0 y 100; opcional. */
+  porcentajeRecorte?: number;
+}
+
+/** Datos históricos y recurrentes con los que se calcula la simulación. */
+export interface ContextoSimulacion {
+  periodoReferencia: string;
+  mesesAnalizados: string[];
+  /** Promedios reales: incluyen movimientos de recurrencias. */
+  ingresosPromedio: number;
+  gastosPromedio: number;
+  flujoLibrePromedio: number;
+  /** Base proyectada: promedio variable + recurrencias activas mensualizadas. */
+  ingresosBase: number;
+  gastosBase: number;
+  flujoLibreActual: number;
+  /** Gasto base de la categoría a recortar: variable + recurrencias de esa categoría. */
+  gastoCategoriaPromedio: number;
+  categoriaRecorteNombre: string | null;
+  metaAhorroMensual: number;
+  ingresoRecurrenteMensual: number;
+  compromisoRecurrenteMensual: number;
+  recurrenciasActivas: RecurrenciaMensualizada[];
+}
+
+/** Resultado completo del simulador de escenarios. */
+export interface ResultadoSimulacion {
+  montoObjetivo: number;
+  meses: number;
+  cuotaMensual: number;
+  categoriaRecorteId: string | null;
+  categoriaRecorteNombre: string | null;
+  porcentajeRecorte: number;
+
+  periodoReferencia: string;
+  mesesAnalizados: string[];
+  ingresosPromedio: number;
+  gastosPromedio: number;
+  flujoLibrePromedio: number;
+  ingresoRecurrenteMensual: number;
+  compromisoRecurrenteMensual: number;
+  recurrenciasActivas: RecurrenciaMensualizada[];
+  metaAhorroMensual: number;
+
+  gastoCategoriaPromedio: number;
+  ahorroMensualRecorte: number;
+  ahorroAnualRecorte: number;
+  gastoCategoriaProyectada: number;
+
+  ingresosBase: number;
+  gastosBase: number;
+  gastosProyectados: number;
+  flujoLibreActual: number;
+  flujoLibreProyectado: number;
+  disponibleParaCuota: number;
+  diferenciaMensual: number;
+
+  viable: boolean;
+  alcanzaCuota: boolean;
+  diagnostico: DiagnosticoSimulacion;
+  mesesParaObjetivo: number | null;
+  fechaEstimada: string | null;
+}
+
 /** Filtros aceptados por las consultas del servicio de finanzas. */
 export interface FiltroTransacciones {
   /** Fecha inicial inclusive, formato AAAA-MM-DD. */

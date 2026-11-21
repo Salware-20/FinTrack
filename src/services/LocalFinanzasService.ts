@@ -22,12 +22,15 @@ import {
   EstadoTransaccion,
   OrdenTransacciones,
   TipoTransaccion,
+  UMBRAL_GASTOS_HORMIGA,
 } from '../models/tipos';
 import type {
   AlertaConcentracionGasto,
+  AnalisisGastosHormiga,
   CambiosPresupuesto,
   CambiosRecurrencia,
   ConfiguracionUsuario,
+  ContextoSimulacion,
   EstadoPresupuesto,
   EstadoResultados,
   FilaCsvDetectada,
@@ -39,15 +42,24 @@ import type {
   NuevaTransferencia,
   NuevoPresupuesto,
   NuevoUsuario,
+  ParametrosSimulacion,
+  RecurrenciaMensualizada,
   ResumenFinanciero,
   ResumenMensual,
   ResumenPorCategoria,
   ResultadoCreacionRecurrencia,
   ResultadoRecuperacion,
   ResultadoRegistro,
+  ResultadoSimulacion,
   SaldoCuenta,
   TipoTransaccion as TipoTransaccionType,
 } from '../models/tipos';
+import {
+  calcularSimulacion,
+  detectarGastosHormiga,
+  mensualizarMontoRecurrente,
+  sumarMeses,
+} from '../utils/analisisFinanciero';
 import {
   derivarHash,
   generarCodigoRecuperacion,
@@ -869,6 +881,41 @@ export class LocalFinanzasService implements FinanzasService {
     return fechaHoy().slice(0, 7);
   }
 
+  /** Valida que un periodo tenga el formato AAAA-MM y un mes real. */
+  private validarPeriodo(periodo: string): void {
+    if (
+      typeof periodo !== 'string' ||
+      !/^\d{4}-(0[1-9]|1[0-2])$/.test(periodo)
+    ) {
+      throw new ErrorValidacion(
+        'El periodo debe tener formato AAAA-MM.',
+        'periodo',
+      );
+    }
+  }
+
+  /** Id de la categoría raíz más todos sus descendientes. */
+  private idsConDescendientes(
+    categorias: Categoria[],
+    raizId: string,
+  ): Set<string> {
+    const resultado = new Set<string>();
+    const pendientes = [raizId];
+
+    while (pendientes.length > 0) {
+      const actual = pendientes.pop() as string;
+      resultado.add(actual);
+
+      for (const categoria of categorias) {
+        if (categoria.padreId === actual && !resultado.has(categoria.id)) {
+          pendientes.push(categoria.id);
+        }
+      }
+    }
+
+    return resultado;
+  }
+
   // ---------------------------------------------------------------------------
   // Presupuestos
   // ---------------------------------------------------------------------------
@@ -1159,6 +1206,294 @@ export class LocalFinanzasService implements FinanzasService {
   ): Promise<ResumenMensual[]> {
     const resumen = await this.obtenerResumen({ desde, hasta });
     return resumen.porMes;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Análisis financiero local
+  // ---------------------------------------------------------------------------
+
+  async analizarGastosHormiga(
+    periodo?: string,
+    umbralMonto?: number,
+  ): Promise<AnalisisGastosHormiga> {
+    const sesion = await this.requerirSesion();
+    const mes = periodo ?? this.periodoActual();
+    this.validarPeriodo(mes);
+
+    const umbral = umbralMonto ?? UMBRAL_GASTOS_HORMIGA;
+    if (typeof umbral !== 'number' || !Number.isFinite(umbral) || umbral < 0) {
+      throw new ErrorValidacion(
+        'El umbral debe ser un número mayor o igual que cero.',
+        'umbralMonto',
+      );
+    }
+
+    const contexto = await this.contextoConsulta(sesion.id);
+    const gastos = contexto.transacciones
+      .filter(
+        (transaccion) =>
+          transaccion.tipo === TipoTransaccion.Gasto &&
+          transaccion.estado === EstadoTransaccion.Confirmado &&
+          transaccion.periodo === mes,
+      )
+      .map((transaccion) => {
+        const categoria = contexto.porCategoriaId.get(transaccion.categoriaId);
+        return {
+          monto: transaccion.monto,
+          fecha: transaccion.fecha,
+          descripcion: transaccion.descripcion,
+          categoriaId: transaccion.categoriaId,
+          categoriaNombre: categoria
+            ? categoria.nombreCompleto(contexto.categorias)
+            : 'Sin categoría',
+        };
+      });
+
+    return detectarGastosHormiga(gastos, {
+      periodo: mes,
+      umbralMonto: umbral,
+    });
+  }
+
+  async simularEscenario(
+    params: ParametrosSimulacion,
+  ): Promise<ResultadoSimulacion> {
+    const sesion = await this.requerirSesion();
+
+    if (!params || typeof params !== 'object') {
+      throw new ErrorValidacion(
+        'Los parámetros de la simulación son obligatorios.',
+        'parametros',
+      );
+    }
+
+    const { montoObjetivo, meses } = params;
+    if (
+      typeof montoObjetivo !== 'number' ||
+      !Number.isFinite(montoObjetivo) ||
+      montoObjetivo <= 0
+    ) {
+      throw new ErrorValidacion(
+        'El monto objetivo debe ser un número mayor que cero.',
+        'montoObjetivo',
+      );
+    }
+    if (!Number.isInteger(meses) || meses < 1) {
+      throw new ErrorValidacion(
+        'La cantidad de meses debe ser un entero mayor o igual que uno.',
+        'meses',
+      );
+    }
+
+    const porcentajeRecorte = params.porcentajeRecorte ?? 0;
+    if (
+      typeof porcentajeRecorte !== 'number' ||
+      !Number.isFinite(porcentajeRecorte) ||
+      porcentajeRecorte < 0 ||
+      porcentajeRecorte > 100
+    ) {
+      throw new ErrorValidacion(
+        'El porcentaje de recorte debe estar entre 0 y 100.',
+        'porcentajeRecorte',
+      );
+    }
+
+    const categoriaRecorteId =
+      typeof params.categoriaRecorteId === 'string'
+        ? params.categoriaRecorteId.trim()
+        : '';
+    if (porcentajeRecorte > 0 && !categoriaRecorteId) {
+      throw new ErrorValidacion(
+        'Indique la categoría a recortar.',
+        'categoriaRecorteId',
+      );
+    }
+
+    const [configuracion, contexto, registrosRecurrencias] = await Promise.all([
+      this.configuracionDe(sesion.id),
+      this.contextoConsulta(sesion.id),
+      this.db.recurrencias.where('usuarioId').equals(sesion.id).toArray(),
+    ]);
+
+    let categoriaRecorteNombre: string | null = null;
+    let idsCategoriaRecorte: Set<string> | null = null;
+
+    if (categoriaRecorteId) {
+      const categoria = contexto.porCategoriaId.get(categoriaRecorteId);
+      if (!categoria) {
+        throw new ErrorValidacion(
+          'La categoría a recortar no existe o no le pertenece.',
+          'categoriaRecorteId',
+        );
+      }
+      if (categoria.tipo !== TipoTransaccion.Gasto) {
+        throw new ErrorValidacion(
+          'Solo se puede recortar una categoría de gasto.',
+          'categoriaRecorteId',
+        );
+      }
+
+      categoriaRecorteNombre = categoria.nombreCompleto(contexto.categorias);
+      idsCategoriaRecorte = this.idsConDescendientes(
+        contexto.categorias,
+        categoria.id,
+      );
+    }
+
+    const periodoActual = this.periodoActual();
+    const proximoPeriodo = sumarMeses(periodoActual, 1);
+    const hoy = fechaHoy();
+    const recurrenciasActivas: RecurrenciaMensualizada[] = [];
+
+    for (const registro of registrosRecurrencias) {
+      if (!registro.activa) continue;
+      // Una regla vencida ya no representa un compromiso futuro.
+      if (registro.fechaFin && registro.fechaFin < hoy) continue;
+      // Reglas que arrancan más allá del próximo mes todavía no afectan el flujo.
+      if (registro.fechaInicio.slice(0, 7) > proximoPeriodo) continue;
+
+      recurrenciasActivas.push({
+        id: registro.id,
+        categoriaId: registro.categoriaId,
+        descripcion: registro.descripcion,
+        tipo: registro.tipo,
+        frecuencia: registro.frecuencia,
+        monto: redondearMonto(registro.monto),
+        montoMensual: mensualizarMontoRecurrente(
+          registro.frecuencia,
+          registro.monto,
+        ),
+      });
+    }
+
+    const idsRecurrenciasActivas = new Set(
+      recurrenciasActivas.map((recurrencia) => recurrencia.id),
+    );
+    const transaccionesConfirmadas = contexto.transacciones.filter(
+      (transaccion) => transaccion.estado === EstadoTransaccion.Confirmado,
+    );
+
+    const periodos = [
+      ...new Set(
+        transaccionesConfirmadas.map((transaccion) => transaccion.periodo),
+      ),
+    ].sort();
+    const periodosAnteriores = periodos.filter(
+      (periodo) => periodo < periodoActual,
+    );
+    // El mes en curso suele estar incompleto: si hay historial cerrado se usa
+    // ese; el mes actual solo entra cuando no existe ningún mes anterior.
+    const mesesAnalizados = (
+      periodosAnteriores.length > 0 ? periodosAnteriores : periodos
+    ).slice(-3);
+
+    let ingresosReales = 0;
+    let gastosReales = 0;
+    let ingresosVariables = 0;
+    let gastosVariables = 0;
+    let gastoCategoriaVariable = 0;
+
+    for (const transaccion of transaccionesConfirmadas) {
+      if (!mesesAnalizados.includes(transaccion.periodo)) continue;
+
+      const esIngreso = transaccion.tipo === TipoTransaccion.Ingreso;
+      if (esIngreso) {
+        ingresosReales += transaccion.monto;
+      } else {
+        gastosReales += transaccion.monto;
+      }
+
+      // Los movimientos de una regla activa se reemplazan por su equivalente
+      // mensualizado para no contarlos dos veces.
+      const vinculadaActiva = Boolean(
+        transaccion.recurrenciaId &&
+          idsRecurrenciasActivas.has(transaccion.recurrenciaId),
+      );
+      if (vinculadaActiva) continue;
+
+      if (esIngreso) {
+        ingresosVariables += transaccion.monto;
+      } else {
+        gastosVariables += transaccion.monto;
+      }
+
+      if (
+        !esIngreso &&
+        idsCategoriaRecorte &&
+        idsCategoriaRecorte.has(transaccion.categoriaId)
+      ) {
+        gastoCategoriaVariable += transaccion.monto;
+      }
+    }
+
+    let ingresoRecurrenteMensual = 0;
+    let compromisoRecurrenteMensual = 0;
+    let gastoCategoriaRecurrente = 0;
+
+    for (const recurrencia of recurrenciasActivas) {
+      if (recurrencia.tipo === TipoTransaccion.Ingreso) {
+        ingresoRecurrenteMensual += recurrencia.montoMensual;
+        continue;
+      }
+
+      compromisoRecurrenteMensual += recurrencia.montoMensual;
+      if (
+        idsCategoriaRecorte &&
+        idsCategoriaRecorte.has(recurrencia.categoriaId)
+      ) {
+        gastoCategoriaRecurrente += recurrencia.montoMensual;
+      }
+    }
+
+    const divisor = mesesAnalizados.length;
+    const ingresosPromedio =
+      divisor === 0 ? 0 : redondearMonto(ingresosReales / divisor);
+    const gastosPromedio =
+      divisor === 0 ? 0 : redondearMonto(gastosReales / divisor);
+    const ingresosVariablesPromedio =
+      divisor === 0 ? 0 : redondearMonto(ingresosVariables / divisor);
+    const gastosVariablesPromedio =
+      divisor === 0 ? 0 : redondearMonto(gastosVariables / divisor);
+    const gastoCategoriaPromedio = redondearMonto(
+      (divisor === 0 ? 0 : gastoCategoriaVariable / divisor) +
+        gastoCategoriaRecurrente,
+    );
+
+    ingresoRecurrenteMensual = redondearMonto(ingresoRecurrenteMensual);
+    compromisoRecurrenteMensual = redondearMonto(
+      compromisoRecurrenteMensual,
+    );
+
+    const ingresosBase = redondearMonto(
+      ingresosVariablesPromedio + ingresoRecurrenteMensual,
+    );
+    const gastosBase = redondearMonto(
+      gastosVariablesPromedio + compromisoRecurrenteMensual,
+    );
+    const flujoLibreActual = redondearMonto(ingresosBase - gastosBase);
+
+    const contextoSimulacion: ContextoSimulacion = {
+      periodoReferencia: periodoActual,
+      mesesAnalizados,
+      ingresosPromedio,
+      gastosPromedio,
+      flujoLibrePromedio: redondearMonto(ingresosPromedio - gastosPromedio),
+      ingresosBase,
+      gastosBase,
+      flujoLibreActual,
+      gastoCategoriaPromedio,
+      categoriaRecorteNombre,
+      metaAhorroMensual: redondearMonto(configuracion.metaAhorroMensual ?? 0),
+      ingresoRecurrenteMensual,
+      compromisoRecurrenteMensual,
+      recurrenciasActivas,
+    };
+
+    const parametros: ParametrosSimulacion = categoriaRecorteId
+      ? { montoObjetivo, meses, categoriaRecorteId, porcentajeRecorte }
+      : { montoObjetivo, meses };
+
+    return calcularSimulacion(contextoSimulacion, parametros);
   }
 
   // ---------------------------------------------------------------------------
