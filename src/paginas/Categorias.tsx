@@ -161,7 +161,7 @@ export function Categorias() {
     if (!edicion) return
     const monto = Number(limite.replace(',', '.'))
     if (!Number.isFinite(monto) || monto <= 0) {
-      setErrorPresupuesto('Escriba un monto mayor que cero.')
+      setErrorPresupuesto('Ingrese un monto mayor que cero.')
       return
     }
     try {
@@ -187,7 +187,7 @@ export function Categorias() {
       titulo: 'Quitar presupuesto',
       mensaje: (
         <p className="mb-0">
-          <strong>{categoria.nombre}</strong> se quedará sin límite mensual. Sus movimientos no cambian.
+          <strong>{categoria.nombre}</strong> quedará sin límite mensual. Los movimientos registrados no se modifican.
         </p>
       ),
       accion: 'Quitar límite',
@@ -240,7 +240,7 @@ export function Categorias() {
             ) : (
               <Button variant="link" size="sm" className="ft-fijar" onClick={() => abrirPresupuesto(c)}>
                 <i className="bi bi-plus me-1" aria-hidden="true" />
-                Fijar límite
+                Definir límite
               </Button>
             )}
           </td>
@@ -251,7 +251,7 @@ export function Categorias() {
 
   return (
     <>
-      <Encabezado titulo="Categorías" subtitulo="Cómo se agrupan sus ingresos y gastos, y cuánto se permite gastar en cada una.">
+      <Encabezado titulo="Categorías" subtitulo="Clasificación de ingresos y gastos, y presupuestos mensuales por categoría.">
         <Button onClick={() => setFormAbierto((v) => !v)} aria-expanded={formAbierto}>
           <i className={`bi ${formAbierto ? 'bi-x-lg' : 'bi-plus-lg'} me-1`} aria-hidden="true" />
           {formAbierto ? 'Cerrar' : 'Nueva categoría'}
@@ -281,7 +281,7 @@ export function Categorias() {
               </Form.Select>
             </Form.Group>
             <Form.Group controlId="cat-padre">
-              <Form.Label>Dentro de</Form.Label>
+              <Form.Label>Categoría principal</Form.Label>
               <Form.Select value={padreId} onChange={(e) => setPadreId(e.target.value)}>
                 <option value="">Ninguna (categoría principal)</option>
                 {posiblesPadres.map((c) => (
@@ -432,11 +432,11 @@ export function Categorias() {
                   autoFocus
                   required
                 />
-                {!edicion.categoria.padreId && <Form.Text>Incluye lo que se gaste en sus subcategorías.</Form.Text>}
+                {!edicion.categoria.padreId && <Form.Text>Incluye el gasto de sus subcategorías.</Form.Text>}
               </Form.Group>
               <Form.Group controlId="pre-alerta">
                 <Form.Label className="d-flex justify-content-between">
-                  <span>Avisarme al llegar a</span>
+                  <span>Umbral de alerta</span>
                   <strong>{alerta} %</strong>
                 </Form.Label>
                 <Form.Range min={1} max={100} value={alerta} onChange={(e) => setAlerta(Number(e.target.value))} />

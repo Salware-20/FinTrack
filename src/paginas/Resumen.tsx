@@ -35,12 +35,12 @@ interface Datos {
 }
 
 const TEXTO_ESTADO: Record<EstadoPresupuesto['estadoAlerta'], string> = {
-  normal: 'Va bien',
-  advertencia: 'Cerca del límite',
-  excedido: 'Se pasó',
+  normal: 'Dentro del límite',
+  advertencia: 'Próximo al límite',
+  excedido: 'Límite excedido',
 }
 
-export function Resumen({ usuario, onIr }: Props) {
+export function Resumen({ onIr }: Props) {
   const hoy = periodoActual()
   const [periodo, setPeriodo] = useState(hoy)
   const [datos, setDatos] = useState<Datos | null>(null)
@@ -92,12 +92,12 @@ export function Resumen({ usuario, onIr }: Props) {
     <>
       <header className="ft-encabezado">
         <div>
-          <h1 className="ft-titulo">Hola, {usuario.nombre.split(' ')[0]}</h1>
+          <h1 className="ft-titulo">Resumen financiero</h1>
           <div className="ft-mes" role="group" aria-label="Mes que se muestra">
             <button type="button" className="ft-icono-btn" onClick={() => setPeriodo(moverPeriodo(periodo, -1))} aria-label="Mes anterior">
               <i className="bi bi-chevron-left" aria-hidden="true" />
             </button>
-            <span aria-live="polite">{esMesActual ? `Así va ${formatearMes(periodo)}` : `Así quedó ${formatearMes(periodo)}`}</span>
+            <span aria-live="polite">{`Periodo: ${formatearMes(periodo)}`}</span>
             <button
               type="button"
               className="ft-icono-btn"
@@ -109,7 +109,7 @@ export function Resumen({ usuario, onIr }: Props) {
             </button>
             {!esMesActual && (
               <button type="button" className="btn btn-link btn-sm p-0" onClick={() => setPeriodo(hoy)}>
-                Volver a este mes
+                Ir al mes actual
               </button>
             )}
           </div>
@@ -125,8 +125,8 @@ export function Resumen({ usuario, onIr }: Props) {
       {total.cantidadTransacciones === 0 && (
         <div className="ft-vacio-grande mb-5">
           <i className="bi bi-journal-plus" aria-hidden="true" />
-          <p>Su libro está en blanco. Registre un ingreso o un gasto y este resumen se llena solo.</p>
-          <Button onClick={() => onIr('movimientos')}>Registrar mi primer movimiento</Button>
+          <p>No existen movimientos registrados. El resumen se generará a partir del primer ingreso o gasto.</p>
+          <Button onClick={() => onIr('movimientos')}>Registrar movimiento</Button>
         </div>
       )}
 
@@ -137,8 +137,8 @@ export function Resumen({ usuario, onIr }: Props) {
               <i className="bi bi-exclamation-triangle" aria-hidden="true" />
               <span>
                 <Emoji valor={categoria(a.categoriaId)?.icono} />
-                <strong>{a.categoriaNombre}</strong> se lleva el{' '}
-                <strong>{formatearPorcentaje(a.porcentajeDelTotal)}</strong> de lo gastado en el mes (
+                Concentración de gasto: <strong>{a.categoriaNombre}</strong> representa el{' '}
+                <strong>{formatearPorcentaje(a.porcentajeDelTotal)}</strong> del gasto total del periodo (
                 {formatearMoneda(a.montoGastado)}).
               </span>
             </p>
@@ -159,7 +159,7 @@ export function Resumen({ usuario, onIr }: Props) {
               <dd className="ft-monto gasto">− {formatearMoneda(mes.totalGastos)}</dd>
             </div>
             <div className="ft-libro-linea ft-libro-total">
-              <dt>Queda</dt>
+              <dt>Balance</dt>
               <dd className={mes.balance < 0 ? 'ft-monto gasto' : ''}>{formatearMoneda(mes.balance)}</dd>
             </div>
           </dl>
@@ -176,24 +176,23 @@ export function Resumen({ usuario, onIr }: Props) {
                 <Avance porcentaje={avanceMeta} estado="meta" etiqueta="Avance de la meta de ahorro" />
                 <small className="ft-tenue">
                   {ahorrado >= meta
-                    ? `Meta cumplida, con ${formatearMoneda(ahorrado - meta)} de más.`
-                    : `Faltan ${formatearMoneda(meta - ahorrado)} (${formatearPorcentaje(avanceMeta)} logrado).`}
+                    ? `Meta alcanzada. Excedente: ${formatearMoneda(ahorrado - meta)}.`
+                    : `Pendiente: ${formatearMoneda(meta - ahorrado)} (avance del ${formatearPorcentaje(avanceMeta)}).`}
                 </small>
               </>
             ) : (
               <p className="ft-nota mb-0">
-                ¿Quiere apartar un monto cada mes?{' '}
+                No se ha definido una meta de ahorro mensual.{' '}
                 <button type="button" className="btn btn-link p-0 align-baseline" onClick={() => onIr('cuenta')}>
-                  Fije una meta de ahorro
+                  Configurar meta
                 </button>
-                .
               </p>
             )}
           </div>
 
-          <h2 className="ft-seccion-titulo mt-5">Mis cuentas</h2>
+          <h2 className="ft-seccion-titulo mt-5">Saldos por cuenta</h2>
           {saldos.length === 0 ? (
-            <p className="ft-vacio">Aún no hay cuentas.</p>
+            <p className="ft-vacio">No existen cuentas registradas.</p>
           ) : (
             <ul className="ft-lista-cuentas">
               {saldos.filter((s) => s.activa).map((cuenta) => (
@@ -210,7 +209,7 @@ export function Resumen({ usuario, onIr }: Props) {
                 </li>
               ))}
               <li className="ft-lista-total">
-                <strong>Total hoy</strong>
+                <strong>Saldo total</strong>
                 <strong className="ft-monto">{formatearMoneda(patrimonio)}</strong>
               </li>
             </ul>
@@ -222,12 +221,12 @@ export function Resumen({ usuario, onIr }: Props) {
             <div className="ft-seccion-cabeza">
               <h2 id="t-presupuestos" className="ft-seccion-titulo mb-0">Presupuestos</h2>
               <button type="button" className="btn btn-link btn-sm p-0" onClick={() => onIr('categorias')}>
-                {presupuestos.length === 0 ? 'Fijar límites' : 'Ajustar'}
+                {presupuestos.length === 0 ? 'Definir presupuestos' : 'Administrar'}
               </button>
             </div>
             {presupuestos.length === 0 ? (
               <p className="ft-nota">
-                Ponga un límite mensual a las categorías donde más se le va el dinero (supermercado, salir a comer, Uber) y aquí verá cuánto le queda.
+                No se han definido presupuestos. Asigne un límite mensual a las categorías de gasto para controlar su consumo.
               </p>
             ) : (
               <ul className="ft-presupuestos">
@@ -248,8 +247,8 @@ export function Resumen({ usuario, onIr }: Props) {
                     <Avance porcentaje={p.porcentajeConsumido} estado={p.estadoAlerta} etiqueta={`Consumo de ${p.categoriaNombre}`} />
                     <small className={p.montoDisponible < 0 ? 'ft-monto gasto' : 'ft-tenue'}>
                       {p.montoDisponible >= 0
-                        ? `Quedan ${formatearMoneda(p.montoDisponible)}`
-                        : `Pasado por ${formatearMoneda(Math.abs(p.montoDisponible))}`}
+                        ? `Disponible: ${formatearMoneda(p.montoDisponible)}`
+                        : `Excedido en ${formatearMoneda(Math.abs(p.montoDisponible))}`}
                     </small>
                   </li>
                 ))}
@@ -259,15 +258,15 @@ export function Resumen({ usuario, onIr }: Props) {
 
           <section aria-labelledby="t-movs">
             <div className="ft-seccion-cabeza">
-              <h2 id="t-movs" className="ft-seccion-titulo mb-0">{esMesActual ? 'Últimos movimientos' : 'Movimientos del mes'}</h2>
+              <h2 id="t-movs" className="ft-seccion-titulo mb-0">{esMesActual ? 'Movimientos recientes' : 'Movimientos del periodo'}</h2>
               {ultimas.length > 0 && (
                 <button type="button" className="btn btn-link btn-sm p-0" onClick={() => onIr('movimientos')}>
-                  Ver todos
+                  Ver detalle
                 </button>
               )}
             </div>
             {ultimas.length === 0 ? (
-              <p className="ft-vacio">No hay movimientos en {formatearMes(periodo)}.</p>
+              <p className="ft-vacio">No se registran movimientos en {formatearMes(periodo)}.</p>
             ) : (
               <table className="ft-tabla ft-tabla-movimientos">
                 <thead>
@@ -296,7 +295,7 @@ export function Resumen({ usuario, onIr }: Props) {
                               <span className="ft-mov-titulo">
                                 {t.descripcion}
                                 {t.recurrenciaId && (
-                                  <span className="ft-marca-repite" title="Se registró solo, por una regla que se repite">🔁</span>
+                                  <span className="ft-marca-repite" title="Generado automáticamente por una regla recurrente">🔁</span>
                                 )}
                               </span>
                               <small>

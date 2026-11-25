@@ -104,7 +104,7 @@ export function Acceso({ onEntrar }: Props) {
     // Después de recuperar la contraseña se vuelve a iniciar sesión con la nueva
     cambiarModo('entrar')
     setCodigo('')
-    setNota('Contraseña cambiada. Entre con la nueva.')
+    setNota('La contraseña se actualizó correctamente. Inicie sesión con la nueva contraseña.')
   }
 
   const copiar = async () => {
@@ -127,10 +127,10 @@ export function Acceso({ onEntrar }: Props) {
       <section className="ft-acceso-lado">
         <Marca className="p-0" />
         <div>
-          <h1>Sus ingresos y gastos, en un solo libro.</h1>
+          <h1>Gestión de finanzas personales</h1>
           <p>
-            Todo se guarda en este navegador. No necesita internet ni
-            enviar datos a ningún servidor.
+            La información se almacena localmente en este navegador. El sistema no requiere
+            conexión a internet ni envía datos a servidores externos.
           </p>
         </div>
       </section>
@@ -139,12 +139,12 @@ export function Acceso({ onEntrar }: Props) {
         {modo === 'codigo' ? (
           <>
             <h2 className="h4 mb-2">
-              {pendiente ? 'Guarde su código de recuperación' : 'Este es su código nuevo'}
+              {pendiente ? 'Código de recuperación' : 'Nuevo código de recuperación'}
             </h2>
             <p className="text-secondary">
               {pendiente
-                ? 'Es la única forma de recuperar su contraseña y no se vuelve a mostrar.'
-                : 'El código anterior ya no sirve. Guarde este en lugar del otro; no se vuelve a mostrar.'}
+                ? 'Este código es el único medio para restablecer la contraseña. Consérvelo en un lugar seguro; no se mostrará nuevamente.'
+                : 'El código anterior quedó invalidado. Conserve este nuevo código en un lugar seguro; no se mostrará nuevamente.'}
             </p>
             <div className="ft-codigo mb-3">{formatearCodigoRecuperacion(codigo)}</div>
             <div className="d-flex gap-2 mb-4">
@@ -158,7 +158,7 @@ export function Acceso({ onEntrar }: Props) {
               </Button>
             </div>
             <Button className="w-100" onClick={terminarCodigo}>
-              {pendiente ? 'Ya lo guardé, entrar' : 'Ya lo guardé, iniciar sesión'}
+              {pendiente ? 'Continuar' : 'Ir al inicio de sesión'}
             </Button>
           </>
         ) : (
@@ -168,10 +168,10 @@ export function Acceso({ onEntrar }: Props) {
             </h2>
             <p className="text-secondary mb-4">
               {modo === 'recuperar'
-                ? 'Use el código de recuperación que guardó al crear la cuenta.'
+                ? 'Ingrese el código de recuperación generado al registrar la cuenta.'
                 : modo === 'entrar'
-                  ? 'Entre con su correo y su contraseña.'
-                  : 'Solo toma un minuto.'}
+                  ? 'Ingrese su correo electrónico y su contraseña.'
+                  : 'Complete los datos para registrar una cuenta nueva.'}
             </p>
 
             {nota && (
@@ -199,7 +199,7 @@ export function Acceso({ onEntrar }: Props) {
                 </Form.Group>
               )}
               <Form.Group className="mb-3" controlId="acc-correo">
-                <Form.Label>Correo</Form.Label>
+                <Form.Label>Correo electrónico</Form.Label>
                 <Form.Control
                   type="email"
                   value={correo}
@@ -227,7 +227,7 @@ export function Acceso({ onEntrar }: Props) {
                   <Form.Label>{modo === 'recuperar' ? 'Contraseña nueva' : 'Contraseña'}</Form.Label>
                   {modo === 'entrar' && (
                     <Button variant="link" size="sm" className="p-0 mb-1" onClick={() => cambiarModo('recuperar')}>
-                      ¿La olvidó?
+                      Recuperar contraseña
                     </Button>
                   )}
                 </div>
@@ -242,7 +242,7 @@ export function Acceso({ onEntrar }: Props) {
               </Form.Group>
               {modo !== 'entrar' && (
                 <Form.Group className="mb-3" controlId="acc-confirmacion">
-                  <Form.Label>Repita la contraseña</Form.Label>
+                  <Form.Label>Confirmar contraseña</Form.Label>
                   <Form.Control
                     type="password"
                     value={confirmacion}
@@ -256,7 +256,7 @@ export function Acceso({ onEntrar }: Props) {
                 {cargando
                   ? 'Un momento…'
                   : modo === 'entrar'
-                    ? 'Entrar'
+                    ? 'Iniciar sesión'
                     : modo === 'crear'
                       ? 'Crear cuenta'
                       : 'Cambiar contraseña'}
@@ -264,13 +264,13 @@ export function Acceso({ onEntrar }: Props) {
             </Form>
 
             <p className="mt-4 mb-0 text-secondary">
-              {modo === 'entrar' ? '¿Aún no tiene cuenta? ' : modo === 'crear' ? '¿Ya tiene cuenta? ' : '¿Se acordó? '}
+              {modo === 'entrar' ? '¿No posee una cuenta? ' : modo === 'crear' ? '¿Ya posee una cuenta? ' : 'Volver al '}
               <Button
                 variant="link"
                 className="p-0 align-baseline"
                 onClick={() => cambiarModo(modo === 'entrar' ? 'crear' : 'entrar')}
               >
-                {modo === 'entrar' ? 'Crear una' : 'Iniciar sesión'}
+                {modo === 'entrar' ? 'Registrarse' : modo === 'crear' ? 'Iniciar sesión' : 'inicio de sesión'}
               </Button>
             </p>
           </>

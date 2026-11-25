@@ -17,7 +17,7 @@ export function ThOrdenable({ clave, orden, onOrdenar, derecha, className, child
   const icono =
     direccion === 'desc' ? 'bi-caret-down-fill' : direccion === 'asc' ? 'bi-caret-up-fill' : 'bi-chevron-expand'
   const siguiente =
-    direccion === 'desc' ? 'de menor a mayor' : direccion === 'asc' ? 'como estaba' : 'de mayor a menor'
+    direccion === 'desc' ? 'en orden ascendente' : direccion === 'asc' ? 'en el orden predeterminado' : 'en orden descendente'
 
   return (
     <th

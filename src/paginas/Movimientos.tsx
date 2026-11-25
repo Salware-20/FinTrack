@@ -55,9 +55,9 @@ const fechaCorta = (iso: string) => {
 }
 
 const TEXTO_FRECUENCIA: Record<FrecuenciaRecurrencia, string> = {
-  [FrecuenciaRecurrencia.Diaria]: 'Cada día',
-  [FrecuenciaRecurrencia.Semanal]: 'Cada semana',
-  [FrecuenciaRecurrencia.Mensual]: 'Cada mes',
+  [FrecuenciaRecurrencia.Diaria]: 'Diaria',
+  [FrecuenciaRecurrencia.Semanal]: 'Semanal',
+  [FrecuenciaRecurrencia.Mensual]: 'Mensual',
 }
 
 interface Formulario {
@@ -262,8 +262,8 @@ export function Movimientos() {
         })
         exito(
           generadas === 0
-            ? `Quedó programado. El primer movimiento se registrará el ${formatearFecha(recurrencia.proximaFecha)}.`
-            : `Quedó programado y ya se ${generadas === 1 ? 'registró 1 movimiento' : `registraron ${generadas} movimientos`} hasta hoy.`,
+            ? `Regla recurrente creada. El primer movimiento se registrará el ${formatearFecha(recurrencia.proximaFecha)}.`
+            : `Regla recurrente creada. Se ${generadas === 1 ? 'registró 1 movimiento vencido' : `registraron ${generadas} movimientos vencidos`} a la fecha.`,
         )
         setVerReglas(true)
       } else {
@@ -305,7 +305,7 @@ export function Movimientos() {
   const cambiarRegla = async (r: Recurrencia) => {
     try {
       await finanzasService.actualizarRecurrencia(r.id, { activa: !r.activa })
-      exito(r.activa ? `“${r.descripcion}” quedó en pausa.` : `“${r.descripcion}” se reanudó y se pusieron al día los movimientos pendientes.`)
+      exito(r.activa ? `La regla “${r.descripcion}” se suspendió.` : `La regla “${r.descripcion}” se reactivó y se registraron los movimientos pendientes.`)
       recargar()
     } catch (causa) {
       fallo(causa)
@@ -314,11 +314,11 @@ export function Movimientos() {
 
   const pedirEliminarRegla = (r: Recurrencia) =>
     setConfirmar({
-      titulo: 'Dejar de repetir',
+      titulo: 'Eliminar regla recurrente',
       mensaje: (
         <p className="mb-0">
-          <strong>{r.descripcion}</strong> ya no se registrará solo. Los movimientos que ya se
-          generaron se quedan en su historial.
+          La regla <strong>{r.descripcion}</strong> dejará de generar movimientos. Los movimientos
+          generados previamente se conservan en el historial.
         </p>
       ),
       accion: 'Eliminar regla',
@@ -326,7 +326,7 @@ export function Movimientos() {
       alAceptar: async () => {
         try {
           await finanzasService.eliminarRecurrencia(r.id)
-          exito('Regla eliminada. El historial se conserva.')
+          exito('Regla eliminada. Los movimientos generados se conservan.')
           recargar()
         } catch (causa) {
           fallo(causa)
@@ -349,10 +349,10 @@ export function Movimientos() {
 
   return (
     <>
-      <Encabezado titulo="Movimientos" subtitulo="Todo lo que entra y sale, en orden.">
+      <Encabezado titulo="Movimientos" subtitulo="Registro de ingresos y gastos.">
         <Button variant="outline-primary" onClick={() => void ejemplos()}>
           <i className="bi bi-magic me-1" aria-hidden="true" />
-          Cargar ejemplos
+          Cargar datos de ejemplo
         </Button>
         <Button
           variant="outline-primary"
@@ -393,7 +393,7 @@ export function Movimientos() {
             {editando?.recurrenciaId && (
               <span className="ft-nota">
                 <i className="bi bi-arrow-repeat me-1" aria-hidden="true" />
-                Generado por una regla. Los cambios solo afectan a este movimiento.
+                Movimiento generado por una regla recurrente. Los cambios afectan únicamente a este registro.
               </span>
             )}
           </div>
@@ -418,7 +418,7 @@ export function Movimientos() {
               <Form.Control inputMode="decimal" value={form.monto} onChange={(e) => campo('monto', e.target.value)} required />
             </Form.Group>
             <Form.Group controlId="mov-fecha">
-              <Form.Label>{form.repetir ? 'Primera fecha' : 'Fecha'}</Form.Label>
+              <Form.Label>{form.repetir ? 'Fecha de inicio' : 'Fecha'}</Form.Label>
               <Form.Control type="date" value={form.fecha} onChange={(e) => campo('fecha', e.target.value)} required />
             </Form.Group>
             <Form.Group controlId="mov-descripcion" className="ft-ancho-doble">
@@ -428,7 +428,7 @@ export function Movimientos() {
             <Form.Group controlId="mov-categoria">
               <Form.Label>Categoría</Form.Label>
               <Form.Select value={form.categoriaId} onChange={(e) => campo('categoriaId', e.target.value)} required>
-                <option value="">Elegir categoría</option>
+                <option value="">Seleccione una categoría</option>
                 {opcionesCategoria(form.tipo).map((c) => (
                   <option key={c.id} value={c.id}>{c.texto}</option>
                 ))}
@@ -463,7 +463,7 @@ export function Movimientos() {
             </Form.Group>
             <Form.Group controlId="mov-etiquetas" className="ft-ancho-doble">
               <Form.Label>Etiquetas</Form.Label>
-              <Form.Control value={form.etiquetas} onChange={(e) => campo('etiquetas', e.target.value)} placeholder="Separadas por coma" />
+              <Form.Control value={form.etiquetas} onChange={(e) => campo('etiquetas', e.target.value)} placeholder="Separadas por comas" />
             </Form.Group>
           </div>
 
@@ -472,7 +472,7 @@ export function Movimientos() {
               <Form.Check
                 type="switch"
                 id="mov-repetir"
-                label="Repetir este movimiento"
+                label="Movimiento recurrente"
                 checked={form.repetir}
                 onChange={(e) => campo('repetir', e.target.checked)}
               />
@@ -491,18 +491,18 @@ export function Movimientos() {
                     <Form.Control type="date" value={form.fechaFin} min={form.fecha} onChange={(e) => campo('fechaFin', e.target.value)} />
                   </Form.Group>
                   <p className="ft-nota ft-ancho-doble mb-0">
-                    Se registra solo el día que toca, siempre como confirmado. Nunca se adelanta al saldo.
+                    Cada ocurrencia se registra automáticamente en su fecha, con estado confirmado. No se registran movimientos futuros.
                   </p>
                 </div>
               ) : (
-                <p className="ft-nota mb-0">Para el alquiler, el salario, Netflix y todo lo que se paga igual cada cierto tiempo.</p>
+                <p className="ft-nota mb-0">Aplica a ingresos o gastos periódicos, como salarios, alquileres o suscripciones.</p>
               )}
             </div>
           )}
 
           <div className="ft-acciones mt-3">
             <Button type="submit" disabled={guardando}>
-              {guardando ? 'Guardando…' : editando ? 'Guardar cambios' : form.repetir ? 'Programar' : 'Guardar movimiento'}
+              {guardando ? 'Guardando…' : editando ? 'Guardar cambios' : form.repetir ? 'Crear regla' : 'Guardar movimiento'}
             </Button>
             <Button variant="outline-secondary" onClick={cerrarFormulario}>
               Cancelar
@@ -521,7 +521,7 @@ export function Movimientos() {
             onClick={() => setVerReglas((v) => !v)}
           >
             <i className="bi bi-arrow-repeat" aria-hidden="true" />
-            <span id="t-reglas">Movimientos que se repiten</span>
+            <span id="t-reglas">Reglas recurrentes</span>
             <small>
               {reglasActivas} {reglasActivas === 1 ? 'activo' : 'activos'} de {reglas.length}
             </small>
@@ -645,12 +645,12 @@ export function Movimientos() {
         <p className="ft-vacio">Cargando…</p>
       ) : lista.length === 0 ? (
         hayFiltros ? (
-          <p className="ft-vacio">Ningún movimiento coincide con esos filtros.</p>
+          <p className="ft-vacio">Ningún movimiento coincide con los filtros aplicados.</p>
         ) : (
           <div className="ft-vacio-grande">
             <i className="bi bi-receipt" aria-hidden="true" />
-            <p>Todavía no hay movimientos.</p>
-            <Button onClick={abrirNuevo}>Registrar mi primer movimiento</Button>
+            <p>No existen movimientos registrados.</p>
+            <Button onClick={abrirNuevo}>Registrar movimiento</Button>
           </div>
         )
       ) : (
@@ -705,8 +705,8 @@ export function Movimientos() {
                           <span className="ft-mov-titulo">
                             {t.descripcion}
                             {t.recurrenciaId && (
-                              <span className="ft-marca-repite" title="Se registró solo, por una regla que se repite">
-                                🔁<span className="visually-hidden"> Repetido automáticamente</span>
+                              <span className="ft-marca-repite" title="Generado automáticamente por una regla recurrente">
+                                🔁<span className="visually-hidden"> Generado por una regla recurrente</span>
                               </span>
                             )}
                             {t.estado === EstadoTransaccion.Pendiente && <span className="ft-etiqueta-estado">Pendiente</span>}

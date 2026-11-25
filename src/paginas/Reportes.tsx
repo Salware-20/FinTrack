@@ -94,7 +94,7 @@ export function Reportes({ usuario }: { usuario: Usuario }) {
     try {
       const texto = await finanzasService.exportarTransaccionesCsv({ desde: rango.desde, hasta: rango.hasta })
       descargarTexto(nombreConFecha('movimientos', 'csv'), `\uFEFF${texto}`, 'text/csv;charset=utf-8')
-      exito('CSV exportado. Se abre directo en Excel.')
+      exito('Archivo CSV exportado. Puede abrirse en Microsoft Excel.')
     } catch (causa) {
       fallo(causa)
     }
@@ -164,7 +164,7 @@ export function Reportes({ usuario }: { usuario: Usuario }) {
           <section className="col-12 col-xl-6" aria-labelledby="t-estado">
             <h2 id="t-estado" className="ft-seccion-titulo">Estado de resultados</h2>
             {estado.filas.length === 0 ? (
-              <p className="ft-vacio">No hay movimientos en este periodo.</p>
+              <p className="ft-vacio">No se registran movimientos en el periodo seleccionado.</p>
             ) : (
               <table className="ft-tabla">
                 <thead>
@@ -213,7 +213,7 @@ export function Reportes({ usuario }: { usuario: Usuario }) {
                 <thead>
                   <tr>
                     <ThOrdenable clave="categoria" orden={tablaCategorias.orden} onOrdenar={tablaCategorias.alternar}>Categoría</ThOrdenable>
-                    <ThOrdenable clave="cantidad" orden={tablaCategorias.orden} onOrdenar={tablaCategorias.alternar} derecha>Mov.</ThOrdenable>
+                    <ThOrdenable clave="cantidad" orden={tablaCategorias.orden} onOrdenar={tablaCategorias.alternar} derecha>Movimientos</ThOrdenable>
                     <ThOrdenable clave="total" orden={tablaCategorias.orden} onOrdenar={tablaCategorias.alternar} derecha>Total</ThOrdenable>
                     <th scope="col" className="derecha">%</th>
                   </tr>

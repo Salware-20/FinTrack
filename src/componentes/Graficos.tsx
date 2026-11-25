@@ -49,7 +49,7 @@ export function GraficoGastos({ datos }: { datos: ResumenPorCategoria[] }) {
     .sort((a, b) => b.total - a.total)
     .slice(0, 8)
 
-  if (gastos.length === 0) return <p className="ft-vacio">No hay gastos en este periodo.</p>
+  if (gastos.length === 0) return <p className="ft-vacio">No se registran gastos en el periodo.</p>
 
   return (
     <div className="ft-grafico" style={{ height: `${gastos.length * 2.6 + 3}rem` }}>

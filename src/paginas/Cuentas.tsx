@@ -118,8 +118,8 @@ export function Cuentas() {
       await finanzasService.actualizarCuenta(cuenta.id, { activa: !cuenta.activa })
       exito(
         cuenta.activa
-          ? `“${cuenta.nombre}” se archivó. Sus movimientos que se repiten quedaron en pausa.`
-          : `“${cuenta.nombre}” volvió a estar activa.`,
+          ? `La cuenta “${cuenta.nombre}” se archivó. Sus reglas recurrentes se suspendieron.`
+          : `La cuenta “${cuenta.nombre}” se reactivó.`,
       )
       recargar()
     } catch (causa) {
@@ -152,7 +152,7 @@ export function Cuentas() {
 
   return (
     <>
-      <Encabezado titulo="Cuentas" subtitulo="Dónde está su dinero hoy." />
+      <Encabezado titulo="Cuentas" subtitulo="Saldos actuales y transferencias entre cuentas." />
       <Avisos error={error} aviso={aviso} onCerrar={limpiar} />
 
       {cargando ? (
@@ -258,7 +258,7 @@ export function Cuentas() {
         <section className="col-12 col-xl-6" aria-labelledby="t-transf">
           <h2 id="t-transf" className="ft-seccion-titulo">Transferir entre cuentas</h2>
           {activas.length < 2 ? (
-            <p className="ft-vacio">Necesita al menos dos cuentas activas para transferir.</p>
+            <p className="ft-vacio">Se requieren al menos dos cuentas activas para realizar una transferencia.</p>
           ) : (
             <Form className="ft-panel" onSubmit={(e) => void transferir(e)}>
               <div className="ft-rejilla">

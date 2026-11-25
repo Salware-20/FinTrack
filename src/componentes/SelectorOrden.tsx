@@ -30,10 +30,10 @@ export function SelectorOrden({ id, orden, columnas, onCambiar }: Props) {
           onCambiar(clave ? { clave, direccion: direccion === 'asc' ? 'asc' : 'desc' } : { ...SIN_ORDEN })
         }}
       >
-        <option value="">Como vienen</option>
+        <option value="">Orden predeterminado</option>
         {columnas.flatMap((c) => [
-          <option key={`${c.clave}-d`} value={`${c.clave}:desc`}>{c.texto} (mayor a menor)</option>,
-          <option key={`${c.clave}-a`} value={`${c.clave}:asc`}>{c.texto} (menor a mayor)</option>,
+          <option key={`${c.clave}-d`} value={`${c.clave}:desc`}>{c.texto} (descendente)</option>,
+          <option key={`${c.clave}-a`} value={`${c.clave}:asc`}>{c.texto} (ascendente)</option>,
         ])}
       </Form.Select>
     </div>

@@ -59,7 +59,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
       const guardado = config.metaAhorroMensual ?? 0
       setMetaGuardada(guardado)
       setMeta(guardado > 0 ? String(guardado) : '')
-      exito(guardado > 0 ? `Meta fijada en ${formatearMoneda(guardado)} por mes. Su avance aparece en el Resumen.` : 'Meta de ahorro quitada.')
+      exito(guardado > 0 ? `Meta de ahorro establecida en ${formatearMoneda(guardado)} mensuales. El avance se muestra en el Resumen.` : 'Meta de ahorro eliminada.')
     } catch (causa) {
       fallo(causa)
     }
@@ -87,7 +87,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
     try {
       const respaldo = await finanzasService.exportarRespaldo()
       descargarTexto(nombreConFecha('respaldo-fintrack', 'json'), JSON.stringify(respaldo, null, 2), 'application/json;charset=utf-8')
-      exito('Respaldo descargado. Guárdelo fuera de este equipo.')
+      exito('Respaldo descargado. Se recomienda almacenarlo fuera de este equipo.')
     } catch (causa) {
       fallo(causa)
     } finally {
@@ -123,8 +123,8 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
       titulo: 'Restablecer mis datos',
       mensaje: (
         <p className="mb-0">
-          Se borran todos sus movimientos y los que se repiten, y se restauran las categorías base.
-          Su usuario y su contraseña se mantienen.
+          Se eliminarán todos los movimientos y reglas recurrentes, y se restaurarán las categorías base.
+          El usuario y la contraseña se conservan.
         </p>
       ),
       accion: 'Restablecer',
@@ -141,12 +141,12 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
 
   const eliminarCuenta = async () => {
     if (!contrasenaEliminar) {
-      mostrarError('Escriba su contraseña para eliminar la cuenta.')
+      mostrarError('Ingrese su contraseña para eliminar la cuenta.')
       return
     }
     setConfirmar({
       titulo: 'Eliminar mi cuenta',
-      mensaje: <p className="mb-0">Se elimina su cuenta y todos sus datos de este navegador. Esto no se puede deshacer.</p>,
+      mensaje: <p className="mb-0">Se eliminarán la cuenta y todos sus datos de este navegador. Esta acción es irreversible.</p>,
       accion: 'Eliminar definitivamente',
       peligro: true,
       alAceptar: async () => {
@@ -162,7 +162,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
 
   return (
     <>
-      <Encabezado titulo="Mi cuenta" subtitulo="Su perfil, su contraseña y sus datos." />
+      <Encabezado titulo="Mi cuenta" subtitulo="Perfil, seguridad y administración de datos." />
       <Avisos error={error} aviso={aviso} onCerrar={limpiar} />
 
       <section className="ft-bloque" aria-labelledby="t-perfil">
@@ -182,7 +182,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
       <section className="ft-bloque" aria-labelledby="t-meta">
         <h2 id="t-meta" className="ft-seccion-titulo">Meta de ahorro mensual</h2>
         <p className="text-secondary">
-          Cuánto quiere que le quede al final de cada mes. El Resumen le muestra cuánto lleva.
+          Monto que se desea reservar al cierre de cada mes. El avance se muestra en el Resumen.
         </p>
         <Form className="ft-fila-formulario" onSubmit={(e) => {
           e.preventDefault()
@@ -195,7 +195,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
           <Button type="submit">Guardar meta</Button>
           {metaGuardada > 0 && (
             <Button variant="link" className="text-danger" onClick={() => void guardarMeta(0)}>
-              Quitar meta
+              Eliminar meta
             </Button>
           )}
         </Form>
@@ -214,7 +214,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
             <Form.Text>Mínimo 8 caracteres.</Form.Text>
           </Form.Group>
           <Form.Group className="mb-3" controlId="mc-confirmacion">
-            <Form.Label>Repita la contraseña nueva</Form.Label>
+            <Form.Label>Confirmar contraseña nueva</Form.Label>
             <Form.Control type="password" autoComplete="new-password" value={confirmacion} onChange={(e) => setConfirmacion(e.target.value)} required />
           </Form.Group>
           <Button type="submit">Guardar contraseña</Button>
@@ -224,7 +224,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
       <section className="ft-bloque" aria-labelledby="t-respaldo">
         <h2 id="t-respaldo" className="ft-seccion-titulo">Respaldo</h2>
         <p className="text-secondary">
-          Sus datos viven solo en este navegador. Descargue un respaldo de vez en cuando para no perderlos.
+          Los datos se almacenan únicamente en este navegador. Se recomienda descargar un respaldo de forma periódica.
         </p>
         <Button variant="outline-primary" onClick={() => void exportar()} disabled={ocupado}>
           <i className="bi bi-download me-1" aria-hidden="true" />
@@ -240,7 +240,7 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
           id="mc-confirma-importar"
           className="mb-3"
           type="checkbox"
-          label="Entiendo que esto reemplaza mis datos actuales"
+          label="Confirmo que esta acción reemplaza los datos actuales"
           checked={confirmaImportar}
           onChange={(e) => setConfirmaImportar(e.target.checked)}
         />
@@ -251,14 +251,14 @@ export function MiCuenta({ usuario, onCuentaEliminada }: Props) {
 
       <section className="ft-bloque" aria-labelledby="t-peligro">
         <h2 id="t-peligro" className="ft-seccion-titulo">Borrar datos</h2>
-        <p className="text-secondary">Estas acciones no se pueden deshacer.</p>
+        <p className="text-secondary">Estas acciones son irreversibles.</p>
         <Button variant="outline-danger" onClick={restablecer}>
           Restablecer mis datos
         </Button>
 
         <hr />
         <Form.Group className="mb-3" controlId="mc-eliminar">
-          <Form.Label>Para eliminar la cuenta, escriba su contraseña</Form.Label>
+          <Form.Label>Para eliminar la cuenta, ingrese su contraseña</Form.Label>
           <Form.Control type="password" autoComplete="current-password" value={contrasenaEliminar} onChange={(e) => setContrasenaEliminar(e.target.value)} />
         </Form.Group>
         <Button variant="danger" onClick={() => void eliminarCuenta()}>
