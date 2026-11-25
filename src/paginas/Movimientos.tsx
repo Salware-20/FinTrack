@@ -18,6 +18,7 @@ import { Confirmar } from '../componentes/Confirmar'
 import type { PeticionConfirmar } from '../componentes/Confirmar'
 import { cargarEjemplos } from '../componentes/ejemplos'
 import { Emoji } from '../componentes/Emoji'
+import { ImportadorCsv } from '../componentes/ImportadorCsv'
 import { Encabezado } from '../componentes/Encabezado'
 import { porFecha, porNumero, porTexto } from '../componentes/orden'
 import { SelectorOrden } from '../componentes/SelectorOrden'
@@ -103,6 +104,7 @@ export function Movimientos() {
   const [editando, setEditando] = useState<Transaccion | null>(null)
   const [verReglas, setVerReglas] = useState(false)
   const [verFiltros, setVerFiltros] = useState(false)
+  const [importando, setImportando] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [form, setForm] = useState<Formulario>(formularioNuevo)
   const [confirmar, setConfirmar] = useState<PeticionConfirmar | null>(null)
@@ -209,6 +211,7 @@ export function Movimientos() {
     }
     setEditando(null)
     setForm(formularioNuevo())
+    setImportando(false)
     setAbierto(true)
   }
 
@@ -351,6 +354,17 @@ export function Movimientos() {
           <i className="bi bi-magic me-1" aria-hidden="true" />
           Cargar ejemplos
         </Button>
+        <Button
+          variant="outline-primary"
+          aria-expanded={importando}
+          onClick={() => {
+            cerrarFormulario()
+            setImportando((v) => !v)
+          }}
+        >
+          <i className="bi bi-file-earmark-arrow-up me-1" aria-hidden="true" />
+          Importar estado de cuenta
+        </Button>
         <Button onClick={abrirNuevo} aria-expanded={abierto && !editando}>
           <i className={`bi ${abierto && !editando ? 'bi-x-lg' : 'bi-plus-lg'} me-1`} aria-hidden="true" />
           {abierto && !editando ? 'Cerrar' : 'Nuevo movimiento'}
@@ -358,6 +372,19 @@ export function Movimientos() {
       </Encabezado>
 
       <Avisos error={error} aviso={aviso} onCerrar={limpiar} />
+
+      {importando && (
+        <ImportadorCsv
+          cuentas={cuentas}
+          categorias={categorias}
+          onCerrar={() => setImportando(false)}
+          onImportado={(cantidad) => {
+            setImportando(false)
+            exito(cantidad === 1 ? 'Se importó 1 movimiento.' : `Se importaron ${cantidad} movimientos.`)
+            recargar()
+          }}
+        />
+      )}
 
       {abierto && (
         <Form className="ft-panel" onSubmit={(e) => void guardar(e)} aria-label={editando ? 'Editar movimiento' : 'Nuevo movimiento'}>

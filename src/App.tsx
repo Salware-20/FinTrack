@@ -4,6 +4,7 @@ import { finanzasService } from './services'
 import { BarraLateral } from './componentes/BarraLateral'
 import type { Pagina } from './componentes/paginas'
 import { Acceso } from './paginas/Acceso'
+import { Analisis } from './paginas/Analisis'
 import { Categorias } from './paginas/Categorias'
 import { Cuentas } from './paginas/Cuentas'
 import { MiCuenta } from './paginas/MiCuenta'
@@ -90,6 +91,7 @@ function App() {
         {pagina === 'cuentas' && <Cuentas />}
         {pagina === 'categorias' && <Categorias />}
         {pagina === 'reportes' && <Reportes usuario={usuario} />}
+        {pagina === 'analisis' && <Analisis onIr={setPagina} />}
         {pagina === 'cuenta' && (
           <MiCuenta
             usuario={usuario}

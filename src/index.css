@@ -1239,6 +1239,486 @@ body {
 }
 
 /* ==========================================================
+   Análisis e importador de estados de cuenta
+   ========================================================== */
+
+/* Pestañas grandes con una línea de explicación */
+.ft-pestanas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  max-width: 44rem;
+  margin-bottom: 1.75rem;
+}
+
+.ft-pestanas button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--ft-linea);
+  border-radius: 6px;
+  background: var(--ft-superficie);
+  color: var(--ft-tinta);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ft-pestanas button > i {
+  font-size: 1.35rem;
+  color: var(--ft-tinta-suave);
+}
+
+.ft-pestanas strong,
+.ft-pestanas small {
+  display: block;
+}
+
+.ft-pestanas small {
+  color: var(--ft-tinta-suave);
+  font-size: 0.8rem;
+}
+
+.ft-pestanas button:hover {
+  border-color: var(--ft-pino);
+}
+
+.ft-pestanas button.activa {
+  border-color: var(--ft-pino);
+  box-shadow: inset 0 -3px 0 var(--ft-pino);
+}
+
+.ft-pestanas button.activa > i {
+  color: var(--ft-pino);
+}
+
+.ft-pestanas button:focus-visible {
+  outline: 2px solid var(--ft-pino);
+  outline-offset: 2px;
+}
+
+.ft-controles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.ft-controles .ft-mes {
+  margin: 0;
+  color: var(--ft-tinta);
+  font-weight: 600;
+  font-size: 1.05rem;
+}
+
+.ft-campo-linea {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  color: var(--ft-tinta-suave);
+  font-size: 0.9rem;
+}
+
+/* Selector segmentado sin colores de ingreso/gasto */
+.ft-selector-neutro button.activo {
+  background: var(--ft-petroleo);
+  border-color: var(--ft-petroleo);
+  color: #fff;
+}
+
+/* Veredicto: una frase grande que responde la pregunta */
+.ft-veredicto {
+  padding: 1.1rem 1.25rem;
+  border-left: 4px solid var(--ft-pino);
+  border-radius: 0 6px 6px 0;
+  background: #e8f2ed;
+}
+
+.ft-veredicto-titulo {
+  margin-bottom: 0.35rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.ft-veredicto-titulo > i {
+  margin-right: 0.45rem;
+  font-size: 1.2rem;
+}
+
+.ft-veredicto.bien {
+  border-color: var(--ft-ingreso);
+  background: #e6f2ec;
+}
+
+.ft-veredicto.bien .ft-veredicto-titulo {
+  color: var(--ft-ingreso);
+}
+
+.ft-veredicto.alerta {
+  border-color: var(--ft-ambar);
+  background: #faf1e2;
+}
+
+.ft-veredicto.alerta .ft-veredicto-titulo > i {
+  color: var(--ft-ambar);
+}
+
+.ft-veredicto.mal {
+  border-color: var(--ft-gasto);
+  background: #f8e7e4;
+}
+
+.ft-veredicto.mal .ft-veredicto-titulo {
+  color: var(--ft-gasto);
+}
+
+.ft-veredicto .ft-avance {
+  max-width: 28rem;
+  background: rgba(28, 43, 48, 0.1);
+}
+
+.ft-veredicto small {
+  color: var(--ft-tinta-suave);
+}
+
+.ft-recalculando {
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+
+/* Indicadores en línea dentro del veredicto */
+.ft-indicadores {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
+  gap: 0.75rem 1.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.ft-indicadores dt {
+  color: var(--ft-tinta-suave);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ft-indicadores dd {
+  margin: 0.1rem 0 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+/* Ranking de gastos hormiga */
+.ft-fugas {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ft-fugas li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--ft-linea);
+}
+
+.ft-fuga-linea {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.ft-fuga-nombre {
+  min-width: 0;
+  font-weight: 500;
+}
+
+.ft-fuga-nombre small,
+.ft-fuga-montos small {
+  display: block;
+  color: var(--ft-tinta-suave);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.ft-fuga-montos {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.ft-explicacion {
+  margin-top: 1.5rem;
+  color: var(--ft-tinta-suave);
+  font-size: 0.9rem;
+}
+
+.ft-explicacion summary {
+  width: fit-content;
+  color: var(--ft-pino);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ft-explicacion ul {
+  margin: 0.6rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.ft-explicacion .ft-lista-cuentas {
+  padding-left: 0;
+  font-size: 0.875rem;
+}
+
+/* Simulador escrito como una frase */
+.ft-frase-texto {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.6rem;
+  margin-bottom: 0.75rem;
+  font-size: 1.15rem;
+}
+
+.ft-frase-campo {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ft-prefijo {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--ft-tinta-suave);
+  pointer-events: none;
+}
+
+.ft-frase .ft-campo-monto {
+  width: 10rem;
+  padding-left: 1.75rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.ft-frase .ft-campo-meses {
+  width: 4.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ft-recorte {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+  max-width: 44rem;
+  padding-top: 1rem;
+  border-top: 1px dashed var(--ft-linea);
+}
+
+/* La cuenta paso a paso */
+.ft-libro-pasos dt small {
+  display: block;
+  color: var(--ft-tinta-suave);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.ft-libro-pasos .ft-libro-sub {
+  background: rgba(31, 107, 85, 0.06);
+  border-top: 1px solid var(--ft-tinta-suave);
+  font-weight: 600;
+}
+
+.ft-libro-pasos .ft-libro-sub dt,
+.ft-libro-pasos .ft-libro-sub dd {
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.ft-datos-clave {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ft-datos-clave li {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--ft-linea);
+}
+
+.ft-datos-clave i {
+  color: var(--ft-pino);
+  font-size: 1.1rem;
+}
+
+/* Importador */
+.ft-importador {
+  margin-bottom: 2rem;
+}
+
+.ft-importador .ft-panel-cabeza {
+  align-items: center;
+}
+
+.ft-pasos {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+  counter-reset: paso;
+  font-size: 0.85rem;
+  color: var(--ft-tinta-suave);
+}
+
+.ft-pasos li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  counter-increment: paso;
+}
+
+.ft-pasos li::before {
+  content: counter(paso);
+  display: inline-grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--ft-linea);
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.ft-pasos li + li::after {
+  order: -1;
+  content: '';
+  width: 1.5rem;
+  height: 1px;
+  background: var(--ft-linea);
+}
+
+.ft-pasos li.actual {
+  color: var(--ft-tinta);
+  font-weight: 600;
+}
+
+.ft-pasos li.actual::before {
+  border-color: var(--ft-pino);
+  background: var(--ft-pino);
+  color: #fff;
+}
+
+.ft-pasos li.hecho::before {
+  content: '✓';
+  border-color: var(--ft-pino);
+  color: var(--ft-pino);
+}
+
+.ft-soltar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px dashed var(--ft-pino);
+  border-radius: 4px;
+  background: var(--ft-superficie);
+  cursor: pointer;
+}
+
+.ft-soltar i {
+  font-size: 1.4rem;
+  color: var(--ft-pino);
+}
+
+.ft-soltar strong,
+.ft-soltar small {
+  display: block;
+}
+
+.ft-soltar strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.ft-soltar small {
+  color: var(--ft-tinta-suave);
+  font-size: 0.8rem;
+}
+
+.ft-soltar:hover,
+.ft-soltar:focus-within {
+  background: #eef5f1;
+}
+
+.ft-soltar:focus-within {
+  outline: 2px solid var(--ft-pino);
+  outline-offset: 1px;
+}
+
+.ft-soltar.ocupado {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.ft-importador-resumen {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.ft-tabla-importar td {
+  vertical-align: middle;
+}
+
+.ft-tabla-importar .ft-celda-marca,
+.ft-tabla-importar th:first-child {
+  width: 2.25rem;
+}
+
+.ft-tabla-importar .form-select {
+  min-width: 7rem;
+}
+
+.ft-tabla-importar td[data-label='Categoría'] .form-select {
+  min-width: 11rem;
+}
+
+.ft-fila-duplicada td {
+  background: #fbf4e6;
+}
+
+.ft-tabla-importar .ft-celda-principal small {
+  padding-left: 0;
+}
+
+.ft-tabla-importar td.ft-monto {
+  padding-right: 1rem;
+  white-space: nowrap;
+}
+
+.ft-acciones {
+  flex-wrap: wrap;
+}
+
+@media (max-width: 991.98px) {
+  .ft-recorte {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ==========================================================
    Responsive
    ≥ 1200 px  barra lateral completa
    768–1199   columna de iconos
@@ -1855,5 +2335,155 @@ body {
 
   .ft-app {
     display: block;
+  }
+}
+
+/* Análisis e importador en celular */
+@media (max-width: 767.98px) {
+  .ft-pestanas {
+    gap: 0.5rem;
+  }
+
+  .ft-pestanas button {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    padding: 0.7rem 0.8rem;
+  }
+
+  .ft-pestanas button > i {
+    font-size: 1.15rem;
+  }
+
+  .ft-veredicto-titulo {
+    font-size: 1.1rem;
+  }
+
+  .ft-frase-texto {
+    font-size: 1.05rem;
+  }
+
+  .ft-frase .ft-campo-monto {
+    width: 9rem;
+  }
+
+  .ft-fuga-montos strong {
+    white-space: nowrap;
+  }
+
+  .ft-pasos li + li::after {
+    width: 0.75rem;
+  }
+
+  /* Cada movimiento a importar es una ficha */
+  .ft-tabla-importar,
+  .ft-tabla-importar tbody {
+    display: block;
+  }
+
+  .ft-tabla-importar thead {
+    display: none;
+  }
+
+  .ft-tabla-importar tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 0.4rem 0.6rem;
+    padding: 0.8rem 0;
+    border-bottom: 1px solid var(--ft-linea);
+  }
+
+  .ft-tabla-importar td {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .ft-tabla-importar .ft-celda-marca {
+    grid-row: 1;
+    grid-column: 1;
+    width: auto;
+    padding-top: 0.15rem;
+  }
+
+  .ft-tabla-importar .ft-celda-principal {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .ft-tabla-importar td.ft-monto {
+    grid-row: 1;
+    grid-column: 3;
+    white-space: nowrap;
+  }
+
+  .ft-tabla-importar td[data-label] {
+    grid-column: 2 / -1;
+  }
+
+  .ft-tabla-importar td[data-label='Tipo'],
+  .ft-tabla-importar td[data-label='Método'] {
+    grid-column: span 1;
+  }
+
+  .ft-tabla-importar td[data-label='Tipo'] {
+    grid-column: 2;
+  }
+
+  .ft-tabla-importar td[data-label='Método'] {
+    grid-column: 3;
+  }
+
+  .ft-tabla-importar td[data-label='Categoría'] {
+    grid-row: 3;
+  }
+
+  .ft-tabla-importar .form-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .ft-tabla-importar td.ft-monto {
+    padding-right: 0;
+  }
+
+  .ft-tabla-importar tr {
+    grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .ft-tabla-importar .ft-celda-principal {
+    grid-column: 2 / 3;
+  }
+
+  .ft-tabla-importar td.ft-monto {
+    text-align: right;
+  }
+
+  .ft-fila-duplicada {
+    background: #fbf4e6;
+  }
+
+  .ft-fila-duplicada td {
+    background: transparent;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .ft-pestanas small {
+    display: none;
+  }
+
+  .ft-recorte {
+    padding-top: 0.75rem;
+  }
+}
+
+@media (max-width: 359.98px) {
+  .ft-pasos {
+    flex-wrap: wrap;
+  }
+
+  .ft-pasos li + li::after {
+    display: none;
   }
 }
